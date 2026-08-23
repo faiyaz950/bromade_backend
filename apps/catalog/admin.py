@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Category, CityPackagePrice, Service, ServicePackage
+from .models import Category, CityPackagePrice, Service, ServiceInclusion, ServicePackage
 
 
 @admin.register(Category)
@@ -25,6 +25,13 @@ class CategoryAdmin(admin.ModelAdmin):
         )
 
 
+class ServiceInclusionInline(admin.TabularInline):
+    model = ServiceInclusion
+    extra = 4
+    fields = ('kind', 'text', 'sort_order')
+    ordering = ('kind', 'sort_order')
+
+
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
     list_display = ('thumb', 'name', 'category', 'duration_minutes', 'is_active')
@@ -32,6 +39,18 @@ class ServiceAdmin(admin.ModelAdmin):
     list_filter = ('category', 'is_active')
     autocomplete_fields = ('category',)
     prepopulated_fields = {'slug': ('name',)}
+    inlines = [ServiceInclusionInline]
+    fieldsets = (
+        (None, {'fields': ('category', 'name', 'slug', 'image_url')}),
+        (
+            'Detail screen copy',
+            {
+                'description': 'Headline, description, and the include / does not include rows below appear on the customer app service screen.',
+                'fields': ('headline', 'short_description', 'description'),
+            },
+        ),
+        ('Display', {'fields': ('duration_minutes', 'is_active')}),
+    )
 
     @admin.display(description='')
     def thumb(self, obj):

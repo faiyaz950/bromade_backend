@@ -55,6 +55,8 @@ class ServicePackageSerializer(serializers.ModelSerializer):
 class ServiceSerializer(serializers.ModelSerializer):
     packages = ServicePackageSerializer(many=True, read_only=True)
     image_url = serializers.SerializerMethodField()
+    included_items = serializers.SerializerMethodField()
+    excluded_items = serializers.SerializerMethodField()
 
     class Meta:
         model = Service
@@ -62,12 +64,26 @@ class ServiceSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'slug',
+            'headline',
             'short_description',
             'description',
             'image_url',
             'duration_minutes',
+            'included_items',
+            'excluded_items',
             'packages',
         )
+
+    def _inclusion_texts(self, obj, kind):
+        cached = getattr(obj, '_prefetched_objects_cache', {}).get('inclusions')
+        items = cached if cached is not None else obj.inclusions.all()
+        return [item.text for item in items if item.kind == kind]
+
+    def get_included_items(self, obj):
+        return self._inclusion_texts(obj, 'included')
+
+    def get_excluded_items(self, obj):
+        return self._inclusion_texts(obj, 'excluded')
 
     def get_image_url(self, obj):
         return absolute_media_url(self.context.get('request'), obj.image_url or obj.category.image_url)

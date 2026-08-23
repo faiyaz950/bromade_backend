@@ -30,6 +30,11 @@ class Service(UUIDModel):
     category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name='services')
     name = models.CharField(max_length=150)
     slug = models.SlugField(max_length=170, unique=True, blank=True)
+    headline = models.CharField(
+        max_length=160,
+        blank=True,
+        help_text='Bold line on the service detail screen, above the description.',
+    )
     short_description = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     image_url = models.URLField(max_length=500, blank=True)
@@ -47,6 +52,23 @@ class Service(UUIDModel):
 
     def __str__(self):
         return self.name
+
+
+class ServiceInclusion(UUIDModel):
+    class Kind(models.TextChoices):
+        INCLUDED = 'included', 'Includes'
+        EXCLUDED = 'excluded', 'Does not include'
+
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='inclusions')
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    text = models.CharField(max_length=255)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['kind', 'sort_order', 'created_at']
+
+    def __str__(self):
+        return f'{self.get_kind_display()}: {self.text}'
 
 
 class ServicePackage(UUIDModel):

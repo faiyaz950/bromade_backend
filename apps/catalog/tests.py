@@ -2,7 +2,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
-from apps.catalog.models import Category, Service, ServicePackage
+from apps.catalog.models import Category, Service, ServiceInclusion, ServicePackage
 
 
 class CatalogAPITests(APITestCase):
@@ -10,13 +10,27 @@ class CatalogAPITests(APITestCase):
         self.user = User.objects.create_user(phone_number='+919111111111')
         self.client.force_authenticate(user=self.user)
         category = Category.objects.create(name='Cleaning', description='Cleaning services')
-        service = Service.objects.create(
+        self.service = Service.objects.create(
             category=category,
             name='Bathroom Cleaning',
+            headline='A cleaner bathroom, without the extra work.',
             short_description='Deep clean',
+            description='A trained Brolytics professional cleans the bathroom fixtures and floor you book.',
+        )
+        ServiceInclusion.objects.create(
+            service=self.service,
+            kind=ServiceInclusion.Kind.INCLUDED,
+            text='Toilet bowl, seat, and rim',
+            sort_order=0,
+        )
+        ServiceInclusion.objects.create(
+            service=self.service,
+            kind=ServiceInclusion.Kind.EXCLUDED,
+            text='Plumbing repairs or leak fixes',
+            sort_order=0,
         )
         self.package = ServicePackage.objects.create(
-            service=service,
+            service=self.service,
             name='Classic Bathroom Clean',
             description='Package',
             base_price=1200,
@@ -27,6 +41,10 @@ class CatalogAPITests(APITestCase):
         categories_response = self.client.get('/api/v1/catalog/categories/')
         self.assertEqual(categories_response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(categories_response.data), 1)
+        service_payload = categories_response.data[0]['services'][0]
+        self.assertEqual(service_payload['headline'], 'A cleaner bathroom, without the extra work.')
+        self.assertEqual(service_payload['included_items'], ['Toilet bowl, seat, and rim'])
+        self.assertEqual(service_payload['excluded_items'], ['Plumbing repairs or leak fixes'])
 
         package_response = self.client.get(f'/api/v1/catalog/packages/{self.package.id}/')
         self.assertEqual(package_response.status_code, status.HTTP_200_OK)

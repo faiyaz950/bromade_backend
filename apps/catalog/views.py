@@ -8,7 +8,10 @@ class CategoryListView(generics.ListAPIView):
     serializer_class = CategorySerializer
 
     def get_queryset(self):
-        return Category.objects.filter(is_active=True).prefetch_related('services__packages')
+        return Category.objects.filter(is_active=True).prefetch_related(
+            'services__packages',
+            'services__inclusions',
+        )
 
     def get_serializer_context(self):
         context = super().get_serializer_context()

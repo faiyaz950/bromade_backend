@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.bookings.models import Booking, BookingItem, BookingStatusLog
-from apps.catalog.models import Category, CityPackagePrice, Service, ServicePackage
+from apps.catalog.models import Category, CityPackagePrice, Service, ServiceInclusion, ServicePackage
 from apps.customers.models import CustomerProfile
 from apps.locations.models import Address, City
 from apps.partners.models import PartnerCity, PartnerProfile, PartnerService
@@ -31,6 +31,170 @@ IMAGES = {
     'pest': '/media/catalog/pest.jpg',
     'painting': '/media/catalog/painting.jpg',
     'office': '/media/catalog/office.jpg',
+}
+
+SERVICE_DETAILS = {
+    'Bathroom Cleaning': {
+        'headline': 'A cleaner bathroom, without the extra work.',
+        'included': [
+            'Toilet bowl, seat, and rim',
+            'Washbasin, tap, and nearby tiles',
+            'Floor mopping and fixture wipe-down',
+            'Mirror and glass surfaces in the bathroom',
+        ],
+        'excluded': [
+            'Grout restoration or heavy stain removal',
+            'Plumbing repairs or leak fixes',
+            'Ceiling mould treatment',
+        ],
+    },
+    'Kitchen Cleaning': {
+        'headline': 'A kitchen that is ready to cook in again.',
+        'included': [
+            'Countertops, sink, and stove exterior',
+            'Cabinet fronts and visible splashback',
+            'Floor mopping and appliance exteriors',
+        ],
+        'excluded': [
+            'Inside chimney or exhaust duct cleaning',
+            'Inside refrigerator or oven cavities',
+            'Plumbing or electrical repairs',
+        ],
+    },
+    'Full House Cleaning': {
+        'headline': 'The whole home, handled in one visit.',
+        'included': [
+            'Dusting and floor cleaning in listed rooms',
+            'Kitchen and bathroom wipe-down',
+            'Trash collection from the work area',
+        ],
+        'excluded': [
+            'Balcony deep wash or exterior glass',
+            'Inside cabinets or storage units',
+            'Laundry or dish washing',
+        ],
+    },
+    'Sofa Cleaning': {
+        'headline': 'Sofas that look lived-in, not worn out.',
+        'included': [
+            'Surface vacuum and fabric shampoo for listed seats',
+            'Cushion wipe-down where the material allows',
+        ],
+        'excluded': [
+            'Stain guarantee on older marks',
+            'Leather recolouring or repairs',
+        ],
+    },
+    'Carpet Cleaning': {
+        'headline': 'Carpets lifted, cleaned, and left to dry.',
+        'included': [
+            'Vacuum and shampoo for the listed carpet area',
+            'Spot treatment of everyday marks',
+        ],
+        'excluded': [
+            'Wall-to-wall fitting or stretching',
+            'Guarantee on long-set stains',
+        ],
+    },
+    'Water Tank Cleaning': {
+        'headline': 'A tank cleaned and left ready to refill.',
+        'included': [
+            'Emptying, scrubbing, and disinfectant rinse',
+            'Lid and inner wall cleaning',
+        ],
+        'excluded': [
+            'Pipeline flushing through the house',
+            'Tank replacement or welding',
+        ],
+    },
+    'AC Service': {
+        'headline': 'Cooler air, with the basics checked.',
+        'included': [
+            'Filter clean and basic inspection',
+            'Indoor unit wipe-down',
+        ],
+        'excluded': [
+            'Gas refill or spare parts',
+            'Outdoor unit overhaul',
+        ],
+    },
+    'Plumber': {
+        'headline': 'A trained plumber at the door, with a clear scope.',
+        'included': [
+            'Inspection of the reported issue',
+            'Standard fitting fix listed in the package',
+        ],
+        'excluded': [
+            'Civil work or wall breaking',
+            'Spare parts unless billed separately',
+        ],
+    },
+    'Electrician': {
+        'headline': 'Safe checks and fittings, done on site.',
+        'included': [
+            'Inspection of the reported electrical issue',
+            'Standard switch or socket work listed in the package',
+        ],
+        'excluded': [
+            'New wiring through walls',
+            'Appliance repair beyond fittings',
+        ],
+    },
+    'RO Service': {
+        'headline': 'RO care that keeps drinking water on track.',
+        'included': [
+            'Filter check and basic service',
+            'Leak inspection at the unit',
+        ],
+        'excluded': [
+            'New filter set unless billed separately',
+            'Pipeline work away from the unit',
+        ],
+    },
+    'Washing Machine Repair': {
+        'headline': 'Diagnosis first, then a clear next step.',
+        'included': [
+            'On-site inspection of the machine',
+            'Basic fault identification',
+        ],
+        'excluded': [
+            'Spare parts and follow-up repair unless confirmed',
+            'Installation of a new machine',
+        ],
+    },
+    'Pest Control': {
+        'headline': 'Treatment for the rooms you book.',
+        'included': [
+            'Spray treatment for the listed rooms',
+            'Guidance on after-care',
+        ],
+        'excluded': [
+            'Bed bug heat treatment',
+            'Garden or outdoor pest work',
+        ],
+    },
+    'Painting': {
+        'headline': 'A site visit before any paint goes up.',
+        'included': [
+            'On-site look at the walls you want painted',
+            'A verbal estimate for the listed area',
+        ],
+        'excluded': [
+            'Paint, labour, or scaffolding in this visit',
+            'False ceiling or exterior work',
+        ],
+    },
+    'Office Cleaning': {
+        'headline': 'A workspace reset, without disrupting the layout.',
+        'included': [
+            'Desk, floor, and pantry wipe-down',
+            'Washroom cleaning for the listed area',
+        ],
+        'excluded': [
+            'Carpet shampoo unless booked separately',
+            'Server room or lab cleaning',
+        ],
+    },
 }
 
 class Command(BaseCommand):
@@ -158,10 +322,12 @@ class Command(BaseCommand):
                 },
             )
             for service_name, description, image_url, packages in payload['services']:
+                details = SERVICE_DETAILS.get(service_name, {})
                 service, _ = Service.objects.update_or_create(
                     category=category,
                     name=service_name,
                     defaults={
+                        'headline': details.get('headline', ''),
                         'short_description': description,
                         'description': description,
                         'image_url': image_url,
@@ -169,6 +335,7 @@ class Command(BaseCommand):
                         'is_active': True,
                     },
                 )
+                self._sync_inclusions(service, details)
                 for package_name, base_price, discounted_price, duration in packages:
                     package, _ = ServicePackage.objects.update_or_create(
                         service=service,
@@ -194,6 +361,23 @@ class Command(BaseCommand):
                             },
                         )
         return all_packages
+
+    def _sync_inclusions(self, service, details):
+        service.inclusions.all().delete()
+        for sort_order, text in enumerate(details.get('included', [])):
+            ServiceInclusion.objects.create(
+                service=service,
+                kind=ServiceInclusion.Kind.INCLUDED,
+                text=text,
+                sort_order=sort_order,
+            )
+        for sort_order, text in enumerate(details.get('excluded', [])):
+            ServiceInclusion.objects.create(
+                service=service,
+                kind=ServiceInclusion.Kind.EXCLUDED,
+                text=text,
+                sort_order=sort_order,
+            )
 
     def _seed_demo_customer(self, city):
         user, created = User.objects.get_or_create(
