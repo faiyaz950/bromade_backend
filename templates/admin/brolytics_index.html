@@ -1,0 +1,192 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block content %}
+{% if dashboard %}
+<div class="bl-dash">
+  <p class="bl-page-lead">
+    Manage customer orders, partner jobs, approvals, and platform health from one place.
+  </p>
+
+  <div class="bl-kpis">
+    {% for card in dashboard.cards %}
+    <a class="bl-kpi tone-{{ card.tone }} bl-kpi-link" href="{{ card.url }}">
+      <div class="label">{{ card.label }}</div>
+      <div class="value">{{ card.value }}</div>
+      <div class="hint">{{ card.hint }}</div>
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="bl-panels bl-panels-wide">
+    <section class="bl-panel">
+      <div class="bl-panel-head">
+        <h2>Recent customer orders</h2>
+        <a href="{% url 'admin:bookings_booking_changelist' %}">View all</a>
+      </div>
+      {% if dashboard.recent_bookings %}
+      <ul class="bl-recent-list">
+        {% for booking in dashboard.recent_bookings %}
+        <li>
+          <div>
+            <strong>
+              <a href="{% url 'admin:bookings_booking_change' booking.pk %}">
+                {{ booking.customer.phone_number }}
+              </a>
+            </strong>
+            <div class="bl-meta">
+              {{ booking.scheduled_date }} · {{ booking.scheduled_time|time:"H:i" }} · {{ booking.city.name }}
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <span class="bl-chip is-{{ booking.status }}">{{ booking.get_status_display }}</span>
+            <div class="bl-meta">{{ booking.get_assignment_status_display }}</div>
+            <div class="bl-amount">₹{{ booking.total_amount }}</div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="bl-meta">No customer orders yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="bl-panel">
+      <div class="bl-panel-head">
+        <h2>Recent partner jobs</h2>
+        <a href="{% url 'admin:bookings_bookingassignment_changelist' %}">View all</a>
+      </div>
+      {% if dashboard.recent_assignments %}
+      <ul class="bl-recent-list">
+        {% for assignment in dashboard.recent_assignments %}
+        <li>
+          <div>
+            <strong>
+              <a href="{% url 'admin:bookings_bookingassignment_change' assignment.pk %}">
+                {{ assignment.partner.full_name }}
+              </a>
+            </strong>
+            <div class="bl-meta">
+              {{ assignment.booking.customer.phone_number }} · {{ assignment.booking.city.name }}
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <span class="bl-chip is-{{ assignment.status }}">{{ assignment.get_status_display }}</span>
+            <div class="bl-amount">₹{{ assignment.booking.total_amount }}</div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="bl-meta">No partner assignments yet.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="bl-panels bl-panels-wide">
+    <section class="bl-panel">
+      <div class="bl-panel-head">
+        <h2>Pending partner approvals</h2>
+        <a href="{% url 'admin:partners_partnerprofile_changelist' %}?approval_status__exact=pending">Review all</a>
+      </div>
+      {% if dashboard.pending_partners %}
+      <ul class="bl-recent-list">
+        {% for partner in dashboard.pending_partners %}
+        <li>
+          <div>
+            <strong>
+              <a href="{% url 'admin:partners_partnerprofile_change' partner.pk %}">
+                {{ partner.full_name }}
+              </a>
+            </strong>
+            <div class="bl-meta">{{ partner.user.phone_number }} · Applied {{ partner.created_at|date:"M j, Y" }}</div>
+          </div>
+          <div style="text-align:right;">
+            <span class="bl-chip is-draft">Pending approval</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="bl-meta">No partners waiting for approval.</p>
+      {% endif %}
+    </section>
+
+    <section class="bl-panel">
+      <h2>Operations mix</h2>
+      <div class="bl-split-stats">
+        <div>
+          <h3>Booking status</h3>
+          <ul class="bl-status-list">
+            {% for row in dashboard.status_breakdown %}
+            <li>
+              <span class="bl-chip is-{{ row.status }}">{{ row.status }}</span>
+              <strong>{{ row.count }}</strong>
+            </li>
+            {% empty %}
+            <li><span class="bl-meta">No booking data</span></li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div>
+          <h3>Assignment status</h3>
+          <ul class="bl-status-list">
+            {% for row in dashboard.assignment_breakdown %}
+            <li>
+              <span class="bl-chip is-{{ row.assignment_status }}">{{ row.assignment_status }}</span>
+              <strong>{{ row.count }}</strong>
+            </li>
+            {% empty %}
+            <li><span class="bl-meta">No assignment data</span></li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+      <div class="bl-catalog-stats">
+        <span class="bl-pill">{{ dashboard.catalog.categories }} active categories</span>
+        <span class="bl-pill">{{ dashboard.catalog.services }} active services</span>
+      </div>
+    </section>
+  </div>
+</div>
+{% endif %}
+
+{% if app_list %}
+  {% for app in app_list %}
+    <div class="app-{{ app.app_label }} module">
+      <table>
+        <caption>
+          <a href="{{ app.app_url }}" class="section" title="{% blocktranslate with name=app.name %}Models in the {{ name }} application{% endblocktranslate %}">{{ app.name }}</a>
+        </caption>
+        {% for model in app.models %}
+          <tr class="model-{{ model.object_name|lower }}">
+            {% if model.admin_url %}
+              <th scope="row"><a href="{{ model.admin_url }}">{{ model.name }}</a></th>
+            {% else %}
+              <th scope="row">{{ model.name }}</th>
+            {% endif %}
+
+            {% if model.add_url %}
+              <td><a href="{{ model.add_url }}" class="addlink">{% translate "Add" %}</a></td>
+            {% else %}
+              <td></td>
+            {% endif %}
+
+            {% if model.admin_url and show_changelinks %}
+              {% if model.view_only %}
+                <td><a href="{{ model.admin_url }}" class="viewlink">{% translate "View" %}</a></td>
+              {% else %}
+                <td><a href="{{ model.admin_url }}" class="changelink">{% translate "Change" %}</a></td>
+              {% endif %}
+            {% elif show_changelinks %}
+              <td></td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </table>
+    </div>
+  {% endfor %}
+{% else %}
+  <p>{% translate "You don’t have permission to view or edit anything." %}</p>
+{% endif %}
+{% endblock %}

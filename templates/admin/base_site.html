@@ -1,0 +1,33 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Brolytics Admin') }}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'admin/css/brolytics_admin.css' %}?v=4">
+<script>
+  // Lock readable light theme before paint
+  document.documentElement.setAttribute('data-theme', 'light');
+  try { localStorage.setItem('theme', 'light'); } catch (e) {}
+</script>
+{% endblock %}
+
+{% block extrajs %}
+{{ block.super }}
+<script>
+  document.documentElement.setAttribute('data-theme', 'light');
+</script>
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name" class="bl-brand">
+  <span class="bl-mark" aria-hidden="true">⌂</span>
+  <span>
+    <a href="{% url 'admin:index' %}">{{ site_header|default:_('Brolytics Operations') }}</a>
+    <span class="bl-sub">Home Services · Admin</span>
+  </span>
+</h1>
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

@@ -1,0 +1,15 @@
+.DS_Store
+*.log
+*.pyc
+*.swp
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+
+.venv/
+.env
+db.sqlite3
+staticfiles/
+media/*
+!media/catalog/
+!media/catalog/**
