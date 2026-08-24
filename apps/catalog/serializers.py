@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, HomeHeroSlide, Service, ServicePackage
+from .models import Category, HomeHeroSlide, Service, ServicePackage, ServiceProcessStep
 
 
 def absolute_media_url(request, value: str) -> str:
@@ -63,11 +63,23 @@ class ServicePackageSerializer(serializers.ModelSerializer):
         return absolute_media_url(self.context.get('request'), raw)
 
 
+class ServiceProcessStepSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ServiceProcessStep
+        fields = ('id', 'title', 'description', 'image_url', 'sort_order')
+
+    def get_image_url(self, obj):
+        return absolute_media_url(self.context.get('request'), obj.resolved_image_url())
+
+
 class ServiceSerializer(serializers.ModelSerializer):
     packages = ServicePackageSerializer(many=True, read_only=True)
     image_url = serializers.SerializerMethodField()
     included_items = serializers.SerializerMethodField()
     excluded_items = serializers.SerializerMethodField()
+    process_steps = ServiceProcessStepSerializer(many=True, read_only=True)
 
     class Meta:
         model = Service
@@ -82,6 +94,7 @@ class ServiceSerializer(serializers.ModelSerializer):
             'duration_minutes',
             'included_items',
             'excluded_items',
+            'process_steps',
             'packages',
         )
 

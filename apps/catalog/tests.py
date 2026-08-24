@@ -2,7 +2,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
-from apps.catalog.models import Category, HomeHeroSlide, Service, ServiceInclusion, ServicePackage
+from apps.catalog.models import Category, HomeHeroSlide, Service, ServiceInclusion, ServicePackage, ServiceProcessStep
 
 
 class CatalogAPITests(APITestCase):
@@ -13,20 +13,30 @@ class CatalogAPITests(APITestCase):
         self.service = Service.objects.create(
             category=category,
             name='Bathroom Cleaning',
-            headline='A cleaner bathroom, without the extra work.',
+            headline='A Cleaner Bathroom, Every Day',
             short_description='Deep clean',
-            description='A trained Brolytics professional cleans the bathroom fixtures and floor you book.',
+            description=(
+                'Keep your bathroom fresh, clean and guest-ready with regular bathroom cleaning. '
+                'Our professionals clean key surfaces including the WC, washbasin, tiles and fittings, '
+                'helping maintain cleanliness and everyday hygiene.'
+            ),
         )
         ServiceInclusion.objects.create(
             service=self.service,
             kind=ServiceInclusion.Kind.INCLUDED,
-            text='Toilet bowl, seat, and rim',
+            text='Cleaning of toilet bowl (inside and rim)',
             sort_order=0,
         )
         ServiceInclusion.objects.create(
             service=self.service,
             kind=ServiceInclusion.Kind.EXCLUDED,
-            text='Plumbing repairs or leak fixes',
+            text='Deep cleaning such as tile grout scrubbing',
+            sort_order=0,
+        )
+        ServiceProcessStep.objects.create(
+            service=self.service,
+            title='Toilet cleaning',
+            description='The toilet bowl is cleaned as the initial step of the process',
             sort_order=0,
         )
         self.package = ServicePackage.objects.create(
@@ -42,9 +52,16 @@ class CatalogAPITests(APITestCase):
         self.assertEqual(categories_response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(categories_response.data), 1)
         service_payload = categories_response.data[0]['services'][0]
-        self.assertEqual(service_payload['headline'], 'A cleaner bathroom, without the extra work.')
-        self.assertEqual(service_payload['included_items'], ['Toilet bowl, seat, and rim'])
-        self.assertEqual(service_payload['excluded_items'], ['Plumbing repairs or leak fixes'])
+        self.assertEqual(service_payload['headline'], 'A Cleaner Bathroom, Every Day')
+        self.assertEqual(
+            service_payload['included_items'],
+            ['Cleaning of toilet bowl (inside and rim)'],
+        )
+        self.assertEqual(
+            service_payload['excluded_items'],
+            ['Deep cleaning such as tile grout scrubbing'],
+        )
+        self.assertEqual(service_payload['process_steps'][0]['title'], 'Toilet cleaning')
 
         package_response = self.client.get(f'/api/v1/catalog/packages/{self.package.id}/')
         self.assertEqual(package_response.status_code, status.HTTP_200_OK)

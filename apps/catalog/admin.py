@@ -1,7 +1,15 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Category, CityPackagePrice, HomeHeroSlide, Service, ServiceInclusion, ServicePackage
+from .models import (
+    Category,
+    CityPackagePrice,
+    HomeHeroSlide,
+    Service,
+    ServiceInclusion,
+    ServicePackage,
+    ServiceProcessStep,
+)
 
 
 @admin.register(HomeHeroSlide)
@@ -57,9 +65,20 @@ class CategoryAdmin(admin.ModelAdmin):
 
 class ServiceInclusionInline(admin.TabularInline):
     model = ServiceInclusion
-    extra = 4
+    extra = 3
     fields = ('kind', 'text', 'sort_order')
     ordering = ('kind', 'sort_order')
+    verbose_name = 'Include / exclude item'
+    verbose_name_plural = 'Includes and does not include'
+
+
+class ServiceProcessStepInline(admin.StackedInline):
+    model = ServiceProcessStep
+    extra = 1
+    fields = ('title', 'description', 'image', 'image_url', 'sort_order')
+    ordering = ('sort_order',)
+    verbose_name = "How it's done step"
+    verbose_name_plural = "How it's done"
 
 
 @admin.register(Service)
@@ -69,13 +88,16 @@ class ServiceAdmin(admin.ModelAdmin):
     list_filter = ('category', 'is_active')
     autocomplete_fields = ('category',)
     prepopulated_fields = {'slug': ('name',)}
-    inlines = [ServiceInclusionInline]
+    inlines = [ServiceInclusionInline, ServiceProcessStepInline]
     fieldsets = (
         (None, {'fields': ('category', 'name', 'slug', 'image_url')}),
         (
             'Detail screen copy',
             {
-                'description': 'Headline, description, and the include / does not include rows below appear on the customer app service screen.',
+                'description': (
+                    'Headline and description appear under the photo. '
+                    'Add Includes / Does not include rows and How it\'s done steps with the inlines below.'
+                ),
                 'fields': ('headline', 'short_description', 'description'),
             },
         ),

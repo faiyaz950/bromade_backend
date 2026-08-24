@@ -11,6 +11,7 @@ class CategoryListView(generics.ListAPIView):
         return Category.objects.filter(is_active=True).prefetch_related(
             'services__packages',
             'services__inclusions',
+            'services__process_steps',
         )
 
     def get_serializer_context(self):

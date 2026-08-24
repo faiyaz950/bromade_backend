@@ -6,7 +6,15 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.bookings.models import Booking, BookingItem, BookingStatusLog
-from apps.catalog.models import Category, CityPackagePrice, HomeHeroSlide, Service, ServiceInclusion, ServicePackage
+from apps.catalog.models import (
+    Category,
+    CityPackagePrice,
+    HomeHeroSlide,
+    Service,
+    ServiceInclusion,
+    ServicePackage,
+    ServiceProcessStep,
+)
 from apps.customers.models import CustomerProfile
 from apps.locations.models import Address, City
 from apps.partners.models import PartnerCity, PartnerProfile, PartnerService
@@ -35,17 +43,38 @@ IMAGES = {
 
 SERVICE_DETAILS = {
     'Bathroom Cleaning': {
-        'headline': 'A cleaner bathroom, without the extra work.',
+        'headline': 'A Cleaner Bathroom, Every Day',
+        'description': (
+            'Keep your bathroom fresh, clean and guest-ready with regular bathroom cleaning. '
+            'Our professionals clean key surfaces including the WC, washbasin, tiles and fittings, '
+            'helping maintain cleanliness and everyday hygiene.'
+        ),
         'included': [
-            'Toilet bowl, seat, and rim',
-            'Washbasin, tap, and nearby tiles',
-            'Floor mopping and fixture wipe-down',
-            'Mirror and glass surfaces in the bathroom',
+            'Cleaning of toilet bowl (inside and rim)',
+            'Cleaning of washbasin and faucet',
+            'Wiping of bathroom tiles and visible surfaces',
+            'Cleaning of taps and fixtures',
+            'Sweeping and mopping of bathroom floor',
+            'Final wipe-down and deodorizing of the bathroom',
         ],
         'excluded': [
-            'Grout restoration or heavy stain removal',
-            'Plumbing repairs or leak fixes',
-            'Ceiling mould treatment',
+            'Deep cleaning such as tile grout scrubbing',
+            'Removal of heavy mold or hard water stains',
+            'Use of acid-based or strong descaling chemicals',
+            'Cleaning of shower curtains or drains',
+            'Shifting or relocating heavy items in bathroom',
+        ],
+        'steps': [
+            (
+                'Toilet cleaning',
+                'The toilet bowl is cleaned as the initial step of the process',
+                '',
+            ),
+            (
+                'Surface cleaning',
+                'All surfaces in the bathroom, such as the walls and tiles, are cleaned',
+                '',
+            ),
         ],
     },
     'Kitchen Cleaning': {
@@ -331,13 +360,14 @@ class Command(BaseCommand):
                     defaults={
                         'headline': details.get('headline', ''),
                         'short_description': description,
-                        'description': description,
+                        'description': details.get('description', description),
                         'image_url': image_url,
                         'duration_minutes': packages[0][3],
                         'is_active': True,
                     },
                 )
                 self._sync_inclusions(service, details)
+                self._sync_process_steps(service, details)
                 for package_name, base_price, discounted_price, duration in packages:
                     package, _ = ServicePackage.objects.update_or_create(
                         service=service,
@@ -410,6 +440,18 @@ class Command(BaseCommand):
                 service=service,
                 kind=ServiceInclusion.Kind.EXCLUDED,
                 text=text,
+                sort_order=sort_order,
+            )
+
+    def _sync_process_steps(self, service, details):
+        service.process_steps.all().delete()
+        for sort_order, step in enumerate(details.get('steps', [])):
+            title, description, image_url = step
+            ServiceProcessStep.objects.create(
+                service=service,
+                title=title,
+                description=description,
+                image_url=image_url,
                 sort_order=sort_order,
             )
 

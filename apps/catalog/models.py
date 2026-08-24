@@ -73,10 +73,13 @@ class Service(UUIDModel):
     headline = models.CharField(
         max_length=160,
         blank=True,
-        help_text='Bold line on the service detail screen, above the description.',
+        help_text='Large title on the service detail screen, e.g. “A Cleaner Bathroom, Every Day”.',
     )
     short_description = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
+    description = models.TextField(
+        blank=True,
+        help_text='Long paragraph under the headline on the service detail screen.',
+    )
     image_url = models.URLField(max_length=500, blank=True)
     duration_minutes = models.PositiveIntegerField(default=60)
     is_active = models.BooleanField(default=True)
@@ -109,6 +112,40 @@ class ServiceInclusion(UUIDModel):
 
     def __str__(self):
         return f'{self.get_kind_display()}: {self.text}'
+
+
+class ServiceProcessStep(UUIDModel):
+    service = models.ForeignKey(
+        Service,
+        on_delete=models.CASCADE,
+        related_name='process_steps',
+    )
+    title = models.CharField(max_length=120)
+    description = models.CharField(max_length=255)
+    image = models.ImageField(
+        upload_to='service_steps/',
+        blank=True,
+        help_text='Optional square icon shown on How it\'s done.',
+    )
+    image_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text='Or paste a https /media URL if you are not uploading a file.',
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order', 'created_at']
+        verbose_name = 'How it\'s done step'
+        verbose_name_plural = 'How it\'s done steps'
+
+    def resolved_image_url(self) -> str:
+        if self.image:
+            return self.image.url
+        return (self.image_url or '').strip()
+
+    def __str__(self):
+        return self.title
 
 
 class ServicePackage(UUIDModel):
