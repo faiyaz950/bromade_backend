@@ -26,7 +26,7 @@ class BrolyticsAdminSite(AdminSite):
 
     def _dashboard_stats(self):
         from apps.bookings.models import Booking, BookingAssignment
-        from apps.catalog.models import Category, Service
+        from apps.catalog.models import Category, HomeHeroSlide, Service
         from apps.customers.models import CustomerProfile
         from apps.locations.models import Address
         from apps.partners.models import PartnerProfile
@@ -105,6 +105,7 @@ class BrolyticsAdminSite(AdminSite):
             'catalog': {
                 'categories': Category.objects.filter(is_active=True).count(),
                 'services': Service.objects.filter(is_active=True).count(),
+                'slides': HomeHeroSlide.objects.filter(is_active=True).count(),
             },
             'status_breakdown': status_breakdown,
             'assignment_breakdown': assignment_breakdown,

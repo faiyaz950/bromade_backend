@@ -1,8 +1,48 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 
 from apps.common.models import UUIDModel
 from apps.locations.models import City
+
+
+class HomeHeroSlide(UUIDModel):
+    title = models.CharField(
+        max_length=120,
+        blank=True,
+        help_text='Optional overlay on the customer home slider.',
+    )
+    subtitle = models.CharField(max_length=200, blank=True)
+    image = models.ImageField(
+        upload_to='home_slides/',
+        blank=True,
+        help_text='Upload the banner shown in the home slider.',
+    )
+    image_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text='Or paste a https /media URL if you are not uploading a file.',
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['sort_order', 'created_at']
+        verbose_name = 'Home slider image'
+        verbose_name_plural = 'Home slider images'
+
+    def clean(self):
+        super().clean()
+        if not self.image and not (self.image_url or '').strip():
+            raise ValidationError('Upload an image or paste an image URL.')
+
+    def resolved_image_url(self) -> str:
+        if self.image:
+            return self.image.url
+        return (self.image_url or '').strip()
+
+    def __str__(self):
+        return self.title.strip() or f'Slide {self.sort_order + 1}'
 
 
 class Category(UUIDModel):

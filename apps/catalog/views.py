@@ -1,7 +1,7 @@
 from rest_framework import generics
 
-from .models import Category, ServicePackage
-from .serializers import CategorySerializer, PackageDetailSerializer
+from .models import Category, HomeHeroSlide, ServicePackage
+from .serializers import CategorySerializer, HomeHeroSlideSerializer, PackageDetailSerializer
 
 
 class CategoryListView(generics.ListAPIView):
@@ -17,6 +17,11 @@ class CategoryListView(generics.ListAPIView):
         context = super().get_serializer_context()
         context['city_id'] = self.request.query_params.get('city_id')
         return context
+
+
+class HomeHeroSlideListView(generics.ListAPIView):
+    serializer_class = HomeHeroSlideSerializer
+    queryset = HomeHeroSlide.objects.filter(is_active=True)
 
 
 class PackageDetailView(generics.RetrieveAPIView):

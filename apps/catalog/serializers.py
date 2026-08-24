@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Category, Service, ServicePackage
+from .models import Category, HomeHeroSlide, Service, ServicePackage
 
 
 def absolute_media_url(request, value: str) -> str:
@@ -11,6 +11,17 @@ def absolute_media_url(request, value: str) -> str:
     if request is None:
         return value
     return request.build_absolute_uri(value)
+
+
+class HomeHeroSlideSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = HomeHeroSlide
+        fields = ('id', 'title', 'subtitle', 'image_url', 'sort_order')
+
+    def get_image_url(self, obj):
+        return absolute_media_url(self.context.get('request'), obj.resolved_image_url())
 
 
 class ServicePackageSerializer(serializers.ModelSerializer):

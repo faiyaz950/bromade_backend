@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.bookings.models import Booking, BookingItem, BookingStatusLog
-from apps.catalog.models import Category, CityPackagePrice, Service, ServiceInclusion, ServicePackage
+from apps.catalog.models import Category, CityPackagePrice, HomeHeroSlide, Service, ServiceInclusion, ServicePackage
 from apps.customers.models import CustomerProfile
 from apps.locations.models import Address, City
 from apps.partners.models import PartnerCity, PartnerProfile, PartnerService
@@ -209,6 +209,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if Category.objects.exists() and not options['force']:
+            self._seed_home_slides()
             self.stdout.write(self.style.WARNING(
                 'Catalog already present; skipping seed. Use --force to re-seed.'
             ))
@@ -216,6 +217,7 @@ class Command(BaseCommand):
 
         cities = self._seed_cities()
         packages = self._seed_catalog(cities)
+        self._seed_home_slides()
         demo_user, addresses = self._seed_demo_customer(cities[0])
         self._seed_demo_partners(cities[0], packages)
         self._seed_demo_bookings(demo_user, addresses[0], packages)
@@ -361,6 +363,38 @@ class Command(BaseCommand):
                             },
                         )
         return all_packages
+
+    def _seed_home_slides(self):
+        slides = [
+            (
+                'Trusted home care',
+                'Booked in minutes by verified professionals.',
+                IMAGES['cleaning_cat'],
+                0,
+            ),
+            (
+                'Kitchen, bathroom, whole home',
+                'Clear prices before you confirm.',
+                IMAGES['kitchen'],
+                1,
+            ),
+            (
+                'Repairs when you need them',
+                'AC, plumbing, and electrician visits.',
+                IMAGES['repairs_cat'],
+                2,
+            ),
+        ]
+        for title, subtitle, image_url, sort_order in slides:
+            HomeHeroSlide.objects.update_or_create(
+                title=title,
+                defaults={
+                    'subtitle': subtitle,
+                    'image_url': image_url,
+                    'sort_order': sort_order,
+                    'is_active': True,
+                },
+            )
 
     def _sync_inclusions(self, service, details):
         service.inclusions.all().delete()
