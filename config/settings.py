@@ -156,3 +156,4 @@ CORS_ALLOW_ALL_ORIGINS = True
 # Vendor abstractions (swap without rewriting domain services)
 OTP_PROVIDER = config('OTP_PROVIDER', default='mock')
 PAYMENT_GATEWAY = config('PAYMENT_GATEWAY', default='mock_razorpay')
+FIREBASE_PROJECT_ID = config('FIREBASE_PROJECT_ID', default='homeservice-37e32')

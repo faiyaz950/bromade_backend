@@ -27,5 +27,7 @@ services:
         generateValue: true
       - key: OTP_PROVIDER
         value: mock
+      - key: FIREBASE_PROJECT_ID
+        value: homeservice-37e32
       - key: PAYMENT_GATEWAY
         value: mock_razorpay

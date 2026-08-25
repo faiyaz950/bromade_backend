@@ -8,9 +8,9 @@ from apps.common.models import TimeStampedModel, UUIDModel
 
 
 class UserManager(BaseUserManager):
-    def create_user(self, phone_number, password=None, **extra_fields):
-        if not phone_number:
-            raise ValueError('The phone number must be set.')
+    def create_user(self, phone_number=None, password=None, **extra_fields):
+        if not phone_number and not extra_fields.get('email') and not extra_fields.get('google_id'):
+            raise ValueError('A phone number, email, or Google account is required.')
         user = self.model(phone_number=phone_number, **extra_fields)
         if password:
             user.set_password(password)
@@ -32,7 +32,15 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin):
         message='Enter a valid phone number in international format.',
     )
 
-    phone_number = models.CharField(max_length=20, unique=True, validators=[phone_regex])
+    phone_number = models.CharField(
+        max_length=20,
+        unique=True,
+        null=True,
+        blank=True,
+        validators=[phone_regex],
+    )
+    email = models.EmailField(max_length=254, unique=True, null=True, blank=True)
+    google_id = models.CharField(max_length=128, unique=True, null=True, blank=True)
     first_name = models.CharField(max_length=100, blank=True)
     last_name = models.CharField(max_length=100, blank=True)
     is_active = models.BooleanField(default=True)
@@ -46,10 +54,14 @@ class User(UUIDModel, AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         ordering = ['-created_at']
-        indexes = [models.Index(fields=['phone_number'])]
+        indexes = [
+            models.Index(fields=['phone_number'], name='accounts_us_phone_n_613c4a_idx'),
+            models.Index(fields=['email'], name='accounts_user_email_idx'),
+            models.Index(fields=['google_id'], name='accounts_user_google_idx'),
+        ]
 
     def __str__(self):
-        return self.phone_number
+        return self.phone_number or self.email or str(self.id)
 
 
 class OTPRequest(TimeStampedModel):

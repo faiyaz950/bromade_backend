@@ -8,12 +8,12 @@ from .models import OTPRequest, User
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     ordering = ('-created_at',)
-    list_display = ('phone_number', 'full_name', 'account_type', 'is_staff', 'is_active', 'date_joined')
+    list_display = ('phone_number', 'email', 'full_name', 'account_type', 'is_staff', 'is_active', 'date_joined')
     list_filter = ('is_staff', 'is_active', 'is_superuser')
-    search_fields = ('phone_number', 'first_name', 'last_name')
+    search_fields = ('phone_number', 'email', 'google_id', 'first_name', 'last_name')
     readonly_fields = ('last_login', 'date_joined', 'created_at')
     fieldsets = (
-        ('Account', {'fields': ('phone_number', 'password')}),
+        ('Account', {'fields': ('phone_number', 'email', 'google_id', 'password')}),
         ('Profile', {'fields': ('first_name', 'last_name')}),
         ('Access', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Timestamps', {'fields': ('last_login', 'date_joined', 'created_at')}),
