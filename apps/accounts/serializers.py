@@ -6,6 +6,21 @@ from .services.otp import OTPService
 from .services.session import issue_auth_payload, issue_firebase_auth_payload
 
 
+def normalize_phone_number(value):
+    if value is None:
+        return None
+    raw = str(value).strip().replace(' ', '').replace('-', '')
+    if not raw:
+        return None
+    if raw.startswith('+'):
+        return raw
+    if raw.startswith('91') and len(raw) == 12:
+        return f'+{raw}'
+    if raw.isdigit() and len(raw) == 10:
+        return f'+91{raw}'
+    return f'+{raw}'
+
+
 class OTPRequestSerializer(serializers.Serializer):
     phone_number = serializers.CharField(max_length=20)
 
@@ -71,10 +86,26 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'phone_number', 'email', 'first_name', 'last_name', 'full_name')
-        read_only_fields = ('id', 'phone_number', 'email', 'full_name')
+        read_only_fields = ('id', 'email', 'full_name')
+        extra_kwargs = {
+            'phone_number': {'required': False, 'allow_null': True, 'allow_blank': True},
+        }
 
     def get_full_name(self, obj):
         return f'{obj.first_name} {obj.last_name}'.strip()
+
+    def validate_phone_number(self, value):
+        phone = normalize_phone_number(value)
+        if not phone:
+            raise serializers.ValidationError('Enter a valid 10-digit mobile number.')
+        if not User.phone_regex.regex.match(phone):
+            raise serializers.ValidationError('Enter a valid 10-digit mobile number.')
+        taken = User.objects.filter(phone_number=phone)
+        if self.instance is not None:
+            taken = taken.exclude(pk=self.instance.pk)
+        if taken.exists():
+            raise serializers.ValidationError('This mobile number is already in use.')
+        return phone
 
     def update(self, instance, validated_data):
         instance = super().update(instance, validated_data)

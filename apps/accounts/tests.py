@@ -85,3 +85,33 @@ class AuthAPITests(APITestCase):
         )
         self.assertEqual(me_response.status_code, status.HTTP_200_OK)
         self.assertEqual(me_response.data['full_name'], 'Faiyaz Mujtaba')
+
+    @patch('apps.accounts.serializers.verify_id_token')
+    def test_google_user_can_add_name_and_phone(self, mock_verify):
+        mock_verify.return_value = {
+            'email': 'new.user@gmail.com',
+            'name': 'New User',
+            'user_id': 'google-uid-2',
+            'sub': 'google-uid-2',
+            'firebase': {'sign_in_provider': 'google.com'},
+        }
+        login = self.client.post(
+            '/api/v1/auth/firebase/',
+            {'id_token': 'fake-google-token'},
+            format='json',
+        )
+        self.assertTrue(login.data['is_new_user'])
+        self.assertIsNone(login.data['user']['phone_number'])
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {login.data["access"]}')
+        me_response = self.client.patch(
+            '/api/v1/auth/me/',
+            {
+                'first_name': 'Faiyaz',
+                'last_name': 'Mujtaba',
+                'phone_number': '8340715516',
+            },
+            format='json',
+        )
+        self.assertEqual(me_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(me_response.data['full_name'], 'Faiyaz Mujtaba')
+        self.assertEqual(me_response.data['phone_number'], '+918340715516')
