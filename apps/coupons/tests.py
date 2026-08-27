@@ -251,3 +251,15 @@ class CouponAPITests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('not found', response.data['detail'].lower())
+
+    def test_invalid_city_id_does_not_block_all_services_coupon(self):
+        response = self.client.post(
+            '/api/v1/coupons/validate/',
+            {
+                'code': 'SAVE100',
+                'package_id': str(self.package.id),
+                'city_id': '00000000-0000-0000-0000-000000000000',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
