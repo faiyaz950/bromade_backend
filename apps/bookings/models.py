@@ -31,7 +31,16 @@ class Booking(UUIDModel):
         default=AssignmentStatus.UNASSIGNED,
     )
     subtotal_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    coupon = models.ForeignKey(
+        'coupons.Coupon',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='bookings',
+    )
+    coupon_code = models.CharField(max_length=40, blank=True, default='')
     notes = models.TextField(blank=True)
 
     class Meta:

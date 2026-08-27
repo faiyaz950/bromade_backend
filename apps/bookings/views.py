@@ -20,7 +20,10 @@ class BookingCreateView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        booking = BookingService.create_booking(user=request.user, **serializer.validated_data)
+        try:
+            booking = BookingService.create_booking(user=request.user, **serializer.validated_data)
+        except ValueError as exc:
+            return response.Response({'coupon_code': [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
         return response.Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
 
 

@@ -27,6 +27,7 @@ class BrolyticsAdminSite(AdminSite):
     def _dashboard_stats(self):
         from apps.bookings.models import Booking, BookingAssignment
         from apps.catalog.models import Category, HomeHeroSlide, Service
+        from apps.coupons.models import Coupon
         from apps.customers.models import CustomerProfile
         from apps.locations.models import Address
         from apps.partners.models import PartnerProfile
@@ -101,11 +102,19 @@ class BrolyticsAdminSite(AdminSite):
                     'tone': 'forest',
                     'url': reverse('admin:payments_payment_changelist'),
                 },
+                {
+                    'label': 'Active coupons',
+                    'value': Coupon.objects.filter(is_active=True).count(),
+                    'hint': 'Create codes customers can apply at booking',
+                    'tone': 'champagne',
+                    'url': reverse('admin:coupons_coupon_changelist'),
+                },
             ],
             'catalog': {
                 'categories': Category.objects.filter(is_active=True).count(),
                 'services': Service.objects.filter(is_active=True).count(),
                 'slides': HomeHeroSlide.objects.filter(is_active=True).count(),
+                'coupons': Coupon.objects.filter(is_active=True).count(),
             },
             'status_breakdown': status_breakdown,
             'assignment_breakdown': assignment_breakdown,

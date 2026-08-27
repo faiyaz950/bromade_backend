@@ -4,9 +4,10 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.catalog.models import CityPackagePrice, ServicePackage
+from apps.coupons.services import CouponService, CouponValidationError
 from apps.locations.models import Address
 
-from .models import Booking, BookingItem, BookingStatusLog
+from .models import Booking, BookingItem
 
 
 class BookingDraftSerializer(serializers.Serializer):
@@ -16,6 +17,7 @@ class BookingDraftSerializer(serializers.Serializer):
     scheduled_time = serializers.TimeField()
     notes = serializers.CharField(required=False, allow_blank=True)
     quantity = serializers.IntegerField(required=False, min_value=1, default=1)
+    coupon_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def validate_scheduled_date(self, value):
         if value < date.today():
@@ -26,6 +28,19 @@ class BookingDraftSerializer(serializers.Serializer):
         user = self.context['request'].user
         if attrs['address'].user_id != user.id:
             raise serializers.ValidationError({'address_id': 'This address does not belong to the current user.'})
+        code = (attrs.pop('coupon_code', '') or '').strip()
+        if code:
+            try:
+                coupon, _subtotal, _discount, _total = CouponService.validate(
+                    user=user,
+                    code=code,
+                    package=attrs['package'],
+                    city=attrs['address'].city,
+                    quantity=attrs.get('quantity', 1),
+                )
+            except CouponValidationError as exc:
+                raise serializers.ValidationError({'coupon_code': exc.message}) from exc
+            attrs['coupon'] = coupon
         return attrs
 
 
@@ -47,7 +62,9 @@ class BookingSerializer(serializers.ModelSerializer):
             'scheduled_time',
             'status',
             'subtotal_amount',
+            'discount_amount',
             'total_amount',
+            'coupon_code',
             'payment_method',
             'notes',
             'items',

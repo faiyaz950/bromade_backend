@@ -70,13 +70,22 @@ class BookingAdmin(admin.ModelAdmin):
         'assignments__partner__full_name',
     )
     date_hierarchy = 'scheduled_date'
-    readonly_fields = ('id', 'created_at', 'updated_at', 'subtotal_amount', 'total_amount')
+    readonly_fields = (
+        'id',
+        'created_at',
+        'updated_at',
+        'subtotal_amount',
+        'discount_amount',
+        'total_amount',
+        'coupon',
+        'coupon_code',
+    )
     autocomplete_fields = ('customer', 'address', 'city')
     inlines = [BookingItemInline, BookingAssignmentInline, PaymentInline, BookingStatusLogInline]
     fieldsets = (
         ('Customer order', {'fields': ('id', 'customer', 'status', 'assignment_status', 'notes')}),
         ('Schedule & location', {'fields': ('scheduled_date', 'scheduled_time', 'city', 'address')}),
-        ('Pricing', {'fields': ('subtotal_amount', 'total_amount')}),
+        ('Pricing', {'fields': ('subtotal_amount', 'coupon', 'coupon_code', 'discount_amount', 'total_amount')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
 
