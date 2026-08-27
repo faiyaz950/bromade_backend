@@ -225,3 +225,29 @@ class CouponAPITests(APITestCase):
             format='json',
         )
         self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('detail', blocked.data)
+
+    def test_all_services_ignores_leftover_package_limits_and_accepts_spaced_code(self):
+        coupon = Coupon.objects.create(
+            code='WELCOME50',
+            title='Site wide',
+            discount_type=Coupon.DiscountType.FIXED,
+            discount_value=Decimal('50.00'),
+            apply_scope=Coupon.ApplyScope.ALL_SERVICES,
+        )
+        coupon.packages.add(self.package)
+        response = self.client.post(
+            '/api/v1/coupons/validate/',
+            {'code': 'welcome 50', 'package_id': str(self.package.id), 'city_id': str(self.city.id)},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_unknown_coupon_returns_detail(self):
+        response = self.client.post(
+            '/api/v1/coupons/validate/',
+            {'code': 'NOPE', 'package_id': str(self.package.id), 'city_id': str(self.city.id)},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('not found', response.data['detail'].lower())

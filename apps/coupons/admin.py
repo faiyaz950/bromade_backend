@@ -113,6 +113,7 @@ class CouponAdmin(admin.ModelAdmin):
         coupon = form.instance
         if coupon.apply_scope == Coupon.ApplyScope.ALL_SERVICES:
             coupon.services.clear()
+            coupon.packages.clear()
 
     @admin.display(description='Applies to', ordering='apply_scope')
     def applies_to_display(self, obj):

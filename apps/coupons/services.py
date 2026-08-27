@@ -22,6 +22,30 @@ class CouponService:
         return (code or '').strip().upper()
 
     @staticmethod
+    def compact_code(code):
+        return ''.join(ch for ch in CouponService.normalize_code(code) if ch.isalnum())
+
+    @staticmethod
+    def find_coupon(code):
+        normalized = CouponService.normalize_code(code)
+        if not normalized:
+            return None
+        coupon = (
+            Coupon.objects.prefetch_related('services', 'packages', 'cities')
+            .filter(code=normalized)
+            .first()
+        )
+        if coupon is not None:
+            return coupon
+        compact = CouponService.compact_code(normalized)
+        if not compact:
+            return None
+        for candidate in Coupon.objects.prefetch_related('services', 'packages', 'cities').iterator():
+            if CouponService.compact_code(candidate.code) == compact:
+                return candidate
+        return None
+
+    @staticmethod
     def resolve_subtotal(*, package, city=None, quantity=1):
         city_price = None
         if city is not None:
@@ -48,15 +72,14 @@ class CouponService:
     def validate(*, code, package, user=None, city=None, quantity=1, coupon=None):
         """Return (coupon, subtotal, discount, total) or raise CouponValidationError."""
         if coupon is None:
-            normalized = CouponService.normalize_code(code)
-            if not normalized:
+            if not CouponService.normalize_code(code):
                 raise CouponValidationError('Enter a coupon code.')
-            coupon = Coupon.objects.filter(code=normalized).first()
+            coupon = CouponService.find_coupon(code)
             if coupon is None:
-                raise CouponValidationError('This coupon isn’t valid on this booking.')
+                raise CouponValidationError('This coupon code was not found. Check the spelling matches the admin code.')
 
         if not coupon.is_active:
-            raise CouponValidationError('This coupon isn’t valid on this booking.')
+            raise CouponValidationError('This coupon is turned off.')
 
         today = timezone.localdate()
         if coupon.valid_from and today < coupon.valid_from:
@@ -64,11 +87,18 @@ class CouponService:
         if coupon.valid_until and today > coupon.valid_until:
             raise CouponValidationError('This coupon has expired.')
 
-        if coupon.packages.exists() and not coupon.packages.filter(pk=package.pk).exists():
-            raise CouponValidationError('This coupon isn’t valid on this booking.')
-        elif coupon.apply_scope == Coupon.ApplyScope.SELECTED_SERVICES:
-            if not coupon.services.filter(pk=package.service_id).exists():
-                raise CouponValidationError('This coupon isn’t valid on this service.')
+        apply_scope = getattr(coupon, 'apply_scope', Coupon.ApplyScope.ALL_SERVICES)
+        if apply_scope == Coupon.ApplyScope.SELECTED_SERVICES:
+            allowed_services = {str(service_id) for service_id in coupon.services.values_list('pk', flat=True)}
+            if not allowed_services:
+                raise CouponValidationError('This coupon has no services selected in admin.')
+            if str(package.service_id) not in allowed_services:
+                names = ', '.join(coupon.services.values_list('name', flat=True)[:4]) or 'selected services'
+                raise CouponValidationError(
+                    f'This coupon is only for {names}, not for {package.service.name}.'
+                )
+            if coupon.packages.exists() and not coupon.packages.filter(pk=package.pk).exists():
+                raise CouponValidationError('This coupon isn’t valid on this package.')
 
         if coupon.cities.exists():
             if city is None:
