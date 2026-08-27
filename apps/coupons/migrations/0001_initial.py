@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('locations', '0002_alter_address_options_alter_city_options'),
         ('bookings', '0003_alter_bookingassignment_options'),
-        ('catalog', '0008_service_image'),
+        ('catalog', '0007_bathroom_detail_copy'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
