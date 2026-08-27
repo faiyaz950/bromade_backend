@@ -66,9 +66,9 @@ class CouponService:
 
         if coupon.packages.exists() and not coupon.packages.filter(pk=package.pk).exists():
             raise CouponValidationError('This coupon isn’t valid on this booking.')
-        elif not coupon.packages.exists() and coupon.services.exists():
+        elif coupon.apply_scope == Coupon.ApplyScope.SELECTED_SERVICES:
             if not coupon.services.filter(pk=package.service_id).exists():
-                raise CouponValidationError('This coupon isn’t valid on this booking.')
+                raise CouponValidationError('This coupon isn’t valid on this service.')
 
         if coupon.cities.exists():
             if city is None:

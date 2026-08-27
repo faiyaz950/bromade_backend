@@ -1,7 +1,26 @@
+from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 
 from .models import Coupon, CouponRedemption
+
+
+class CouponAdminForm(forms.ModelForm):
+    class Meta:
+        model = Coupon
+        fields = '__all__'
+        widgets = {
+            'apply_scope': forms.RadioSelect,
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('apply_scope') == Coupon.ApplyScope.SELECTED_SERVICES and not cleaned.get('services'):
+            self.add_error(
+                'services',
+                'Pick at least one service, or choose “All services” above.',
+            )
+        return cleaned
 
 
 class CouponRedemptionInline(admin.TabularInline):
@@ -18,17 +37,19 @@ class CouponRedemptionInline(admin.TabularInline):
 
 @admin.register(Coupon)
 class CouponAdmin(admin.ModelAdmin):
+    form = CouponAdminForm
     list_display = (
         'code',
         'title',
         'discount_display',
+        'applies_to_display',
         'validity_display',
         'usage_display',
         'active_badge',
         'created_at',
     )
-    list_filter = ('is_active', 'discount_type', 'valid_until')
-    search_fields = ('code', 'title', 'description')
+    list_filter = ('is_active', 'apply_scope', 'discount_type', 'valid_until')
+    search_fields = ('code', 'title', 'description', 'services__name')
     filter_horizontal = ('cities', 'services', 'packages')
     inlines = [CouponRedemptionInline]
     readonly_fields = ('id', 'created_at', 'updated_at', 'usage_display')
@@ -52,6 +73,16 @@ class CouponAdmin(admin.ModelAdmin):
             },
         ),
         (
+            'Which services can use this coupon',
+            {
+                'description': (
+                    'Choose All services for a site-wide code, or Selected services only '
+                    'to make a separate coupon for Bathroom Cleaning, Kitchen Cleaning, etc.'
+                ),
+                'fields': ('apply_scope', 'services'),
+            },
+        ),
+        (
             'Limits & dates',
             {
                 'fields': (
@@ -64,10 +95,10 @@ class CouponAdmin(admin.ModelAdmin):
             },
         ),
         (
-            'Where it applies',
+            'Optional extra limits',
             {
-                'description': 'Leave these empty to apply the coupon to every city, service, and package.',
-                'fields': ('cities', 'services', 'packages'),
+                'description': 'Leave these empty unless you also want to limit by city or by a specific package.',
+                'fields': ('cities', 'packages'),
                 'classes': ('collapse',),
             },
         ),
@@ -75,7 +106,26 @@ class CouponAdmin(admin.ModelAdmin):
     )
 
     def get_queryset(self, request):
-        return super().get_queryset(request).prefetch_related('redemptions')
+        return super().get_queryset(request).prefetch_related('redemptions', 'services')
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        coupon = form.instance
+        if coupon.apply_scope == Coupon.ApplyScope.ALL_SERVICES:
+            coupon.services.clear()
+
+    @admin.display(description='Applies to', ordering='apply_scope')
+    def applies_to_display(self, obj):
+        if obj.apply_scope == Coupon.ApplyScope.ALL_SERVICES:
+            return 'All services'
+        names = list(obj.services.values_list('name', flat=True)[:3])
+        if not names:
+            return 'Selected services (none picked)'
+        extra = obj.services.count() - len(names)
+        label = ', '.join(names)
+        if extra > 0:
+            label += f' +{extra} more'
+        return label
 
     @admin.display(description='Discount')
     def discount_display(self, obj):

@@ -11,6 +11,10 @@ class Coupon(UUIDModel):
         PERCENTAGE = 'percentage', 'Percentage (%)'
         FIXED = 'fixed', 'Fixed amount (₹)'
 
+    class ApplyScope(models.TextChoices):
+        ALL_SERVICES = 'all_services', 'All services'
+        SELECTED_SERVICES = 'selected_services', 'Selected services only'
+
     code = models.CharField(
         max_length=40,
         unique=True,
@@ -54,6 +58,12 @@ class Coupon(UUIDModel):
     valid_from = models.DateField(null=True, blank=True, help_text='Leave blank to start immediately.')
     valid_until = models.DateField(null=True, blank=True, help_text='Leave blank for no expiry.')
     is_active = models.BooleanField(default=True, help_text='Turn off to hide this coupon from the app without deleting it.')
+    apply_scope = models.CharField(
+        max_length=30,
+        choices=ApplyScope.choices,
+        default=ApplyScope.ALL_SERVICES,
+        help_text='All services = one code for every service. Selected services = this code only works on the services you pick below.',
+    )
     cities = models.ManyToManyField(
         'locations.City',
         blank=True,
@@ -64,7 +74,7 @@ class Coupon(UUIDModel):
         'catalog.Service',
         blank=True,
         related_name='coupons',
-        help_text='Leave empty to allow all services. Ignored if specific packages are selected.',
+        help_text='Used only when “Selected services only” is chosen. Hold Ctrl/Cmd to pick more than one.',
     )
     packages = models.ManyToManyField(
         'catalog.ServicePackage',

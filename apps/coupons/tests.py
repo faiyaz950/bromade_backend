@@ -162,3 +162,66 @@ class CouponAPITests(APITestCase):
         self.assertEqual(booking.discount_amount, Decimal('0.00'))
         self.assertEqual(booking.total_amount, Decimal('1000.00'))
         self.assertEqual(booking.coupon_code, '')
+
+    def test_all_services_coupon_works_on_any_service(self):
+        coupon = Coupon.objects.create(
+            code='EVERYWHERE',
+            title='Site wide',
+            discount_type=Coupon.DiscountType.FIXED,
+            discount_value=Decimal('50.00'),
+            apply_scope=Coupon.ApplyScope.ALL_SERVICES,
+        )
+        bathroom = Service.objects.create(
+            category=self.service.category,
+            name='Bathroom Cleaning',
+            short_description='Bath',
+        )
+        bath_package = ServicePackage.objects.create(
+            service=bathroom,
+            name='Classic Bathroom Clean',
+            description='Package',
+            base_price=1200,
+            discounted_price=900,
+        )
+        response = self.client.post(
+            '/api/v1/coupons/validate/',
+            {'code': coupon.code, 'package_id': str(bath_package.id), 'city_id': str(self.city.id)},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_selected_service_coupon_rejects_other_services(self):
+        bathroom = Service.objects.create(
+            category=self.service.category,
+            name='Bathroom Cleaning',
+            short_description='Bath',
+        )
+        bath_package = ServicePackage.objects.create(
+            service=bathroom,
+            name='Classic Bathroom Clean',
+            description='Package',
+            base_price=1200,
+            discounted_price=900,
+        )
+        coupon = Coupon.objects.create(
+            code='KITCHENONLY',
+            title='Kitchen only',
+            discount_type=Coupon.DiscountType.FIXED,
+            discount_value=Decimal('50.00'),
+            apply_scope=Coupon.ApplyScope.SELECTED_SERVICES,
+        )
+        coupon.services.add(self.service)
+
+        allowed = self.client.post(
+            '/api/v1/coupons/validate/',
+            {'code': 'KITCHENONLY', 'package_id': str(self.package.id), 'city_id': str(self.city.id)},
+            format='json',
+        )
+        self.assertEqual(allowed.status_code, status.HTTP_200_OK)
+
+        blocked = self.client.post(
+            '/api/v1/coupons/validate/',
+            {'code': 'KITCHENONLY', 'package_id': str(bath_package.id), 'city_id': str(self.city.id)},
+            format='json',
+        )
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
