@@ -18,7 +18,7 @@ class Coupon(UUIDModel):
     code = models.CharField(
         max_length=40,
         unique=True,
-        help_text='Customers type this in the app. Saved in uppercase, e.g. WELCOME50.',
+        help_text='Customers type this in the app. Letters and numbers only, saved as WELCOME50.',
     )
     title = models.CharField(
         max_length=120,
@@ -90,13 +90,16 @@ class Coupon(UUIDModel):
         return self.code
 
     def save(self, *args, **kwargs):
-        self.code = (self.code or '').strip().upper()
+        self.code = ''.join(ch for ch in (self.code or '').upper() if ch.isalnum())
         super().save(*args, **kwargs)
 
     def clean(self):
         super().clean()
         if self.discount_value is None:
             return
+        compact = ''.join(ch for ch in (self.code or '').upper() if ch.isalnum())
+        if not compact:
+            raise ValidationError({'code': 'Enter a code with letters or numbers, e.g. WELCOME50.'})
         if self.discount_value <= 0:
             raise ValidationError({'discount_value': 'Discount value must be greater than 0.'})
         if self.discount_type == self.DiscountType.PERCENTAGE and self.discount_value > 100:

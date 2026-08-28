@@ -239,6 +239,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if Category.objects.exists() and not options['force']:
             self._seed_home_slides()
+            self._seed_coupons()
             self.stdout.write(self.style.WARNING(
                 'Catalog already present; skipping seed. Use --force to re-seed.'
             ))
@@ -247,6 +248,7 @@ class Command(BaseCommand):
         cities = self._seed_cities()
         packages = self._seed_catalog(cities)
         self._seed_home_slides()
+        self._seed_coupons()
         demo_user, addresses = self._seed_demo_customer(cities[0])
         self._seed_demo_partners(cities[0], packages)
         self._seed_demo_bookings(demo_user, addresses[0], packages)
@@ -393,6 +395,25 @@ class Command(BaseCommand):
                             },
                         )
         return all_packages
+
+    def _seed_coupons(self):
+        from apps.coupons.models import Coupon
+
+        coupon, created = Coupon.objects.get_or_create(
+            code='WELCOME50',
+            defaults={
+                'title': 'Welcome offer',
+                'discount_type': Coupon.DiscountType.PERCENTAGE,
+                'discount_value': Decimal('10.00'),
+                'apply_scope': Coupon.ApplyScope.ALL_SERVICES,
+                'is_active': True,
+                'usage_limit_per_user': 1,
+            },
+        )
+        if created:
+            self.stdout.write(self.style.SUCCESS('Demo coupon WELCOME50 created (10% off all services).'))
+        else:
+            self.stdout.write(f'Coupon {coupon.code} already exists.')
 
     def _seed_home_slides(self):
         slides = [

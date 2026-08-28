@@ -243,6 +243,35 @@ class CouponAPITests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_hyphenated_typed_code_matches_compact_saved_code(self):
+        coupon = Coupon.objects.create(
+            code='hello-50',
+            title='Hyphen welcome',
+            discount_type=Coupon.DiscountType.FIXED,
+            discount_value=Decimal('50.00'),
+            apply_scope=Coupon.ApplyScope.ALL_SERVICES,
+        )
+        self.assertEqual(coupon.code, 'HELLO50')
+        response = self.client.post(
+            '/api/v1/coupons/validate/',
+            {'code': 'hello-50', 'package_id': str(self.package.id), 'city_id': str(self.city.id)},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['code'], 'HELLO50')
+
+    def test_list_returns_eligible_coupons(self):
+        response = self.client.get(
+            '/api/v1/coupons/',
+            {'package_id': str(self.package.id), 'city_id': str(self.city.id)},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        codes = {row['code'] for row in response.data}
+        self.assertIn('SAVE100', codes)
+        save = next(row for row in response.data if row['code'] == 'SAVE100')
+        self.assertTrue(save['eligible'])
+        self.assertIn('₹100', save['discount_label'])
+
     def test_unknown_coupon_returns_detail(self):
         response = self.client.post(
             '/api/v1/coupons/validate/',

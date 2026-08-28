@@ -19,28 +19,25 @@ TWOPLACES = Decimal('0.01')
 class CouponService:
     @staticmethod
     def normalize_code(code):
-        return (code or '').strip().upper()
+        return ''.join(ch for ch in (code or '').upper() if ch.isalnum())
 
     @staticmethod
     def compact_code(code):
-        return ''.join(ch for ch in CouponService.normalize_code(code) if ch.isalnum())
+        return CouponService.normalize_code(code)
 
     @staticmethod
     def find_coupon(code):
-        normalized = CouponService.normalize_code(code)
-        if not normalized:
-            return None
-        coupon = (
-            Coupon.objects.prefetch_related('services', 'packages', 'cities')
-            .filter(code=normalized)
-            .first()
-        )
-        if coupon is not None:
-            return coupon
-        compact = CouponService.compact_code(normalized)
+        compact = CouponService.compact_code(code)
         if not compact:
             return None
-        for candidate in Coupon.objects.prefetch_related('services', 'packages', 'cities').iterator():
+        qs = Coupon.objects.prefetch_related('services', 'packages', 'cities')
+        coupon = qs.filter(code=compact).first()
+        if coupon is not None:
+            return coupon
+        coupon = qs.filter(code__iexact=compact).first()
+        if coupon is not None:
+            return coupon
+        for candidate in qs.iterator():
             if CouponService.compact_code(candidate.code) == compact:
                 return candidate
         return None
@@ -69,6 +66,50 @@ class CouponService:
         return amount.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
     @staticmethod
+    def discount_label(coupon):
+        if coupon.discount_type == Coupon.DiscountType.PERCENTAGE:
+            label = f'{Decimal(coupon.discount_value):.0f}% off'
+            if coupon.max_discount_amount is not None:
+                label += f' up to ₹{Decimal(coupon.max_discount_amount):.0f}'
+            return label
+        return f'₹{Decimal(coupon.discount_value):.0f} off'
+
+    @staticmethod
+    def list_offers(*, user, package, city=None, quantity=1):
+        today = timezone.localdate()
+        qs = (
+            Coupon.objects.filter(is_active=True)
+            .prefetch_related('services', 'packages', 'cities')
+            .order_by('code')
+        )
+        offers = []
+        for coupon in qs:
+            if coupon.valid_from and today < coupon.valid_from:
+                continue
+            if coupon.valid_until and today > coupon.valid_until:
+                continue
+            eligible = True
+            try:
+                CouponService.validate(
+                    code=coupon.code,
+                    package=package,
+                    user=user,
+                    city=city,
+                    quantity=quantity,
+                    coupon=coupon,
+                )
+            except CouponValidationError:
+                eligible = False
+            offers.append({
+                'code': coupon.code,
+                'title': coupon.title,
+                'discount_label': CouponService.discount_label(coupon),
+                'eligible': eligible,
+            })
+        offers.sort(key=lambda item: (not item['eligible'], item['code']))
+        return offers
+
+    @staticmethod
     def validate(*, code, package, user=None, city=None, quantity=1, coupon=None):
         """Return (coupon, subtotal, discount, total) or raise CouponValidationError."""
         if coupon is None:
@@ -76,7 +117,9 @@ class CouponService:
                 raise CouponValidationError('Enter a coupon code.')
             coupon = CouponService.find_coupon(code)
             if coupon is None:
-                raise CouponValidationError('This coupon code was not found. Check the spelling matches the admin code.')
+                raise CouponValidationError(
+                    'This coupon code was not found. Check the spelling matches the admin code.'
+                )
 
         if not coupon.is_active:
             raise CouponValidationError('This coupon is turned off.')

@@ -13,6 +13,13 @@ class CouponAdminForm(forms.ModelForm):
             'apply_scope': forms.RadioSelect,
         }
 
+    def clean_code(self):
+        code = self.cleaned_data.get('code') or ''
+        compact = ''.join(ch for ch in code.upper() if ch.isalnum())
+        if not compact:
+            raise forms.ValidationError('Enter a code with letters or numbers, e.g. WELCOME50.')
+        return compact
+
     def clean(self):
         cleaned = super().clean()
         if cleaned.get('apply_scope') == Coupon.ApplyScope.SELECTED_SERVICES and not cleaned.get('services'):

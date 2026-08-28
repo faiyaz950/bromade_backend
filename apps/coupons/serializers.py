@@ -6,6 +6,18 @@ from apps.locations.models import City
 from .services import CouponService, CouponValidationError
 
 
+class CouponOfferSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    title = serializers.CharField()
+    discount_label = serializers.CharField()
+    eligible = serializers.BooleanField()
+
+
+class CouponListQuerySerializer(serializers.Serializer):
+    package_id = serializers.UUIDField()
+    city_id = serializers.UUIDField(required=False, allow_null=True)
+
+
 class CouponValidateSerializer(serializers.Serializer):
     code = serializers.CharField()
     package_id = serializers.UUIDField()
@@ -13,6 +25,7 @@ class CouponValidateSerializer(serializers.Serializer):
     quantity = serializers.IntegerField(required=False, min_value=1, default=1)
 
     def validate(self, attrs):
+        attrs['code'] = CouponService.normalize_code(attrs.get('code'))
         package = (
             ServicePackage.objects.select_related('service')
             .filter(pk=attrs['package_id'])

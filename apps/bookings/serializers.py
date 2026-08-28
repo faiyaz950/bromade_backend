@@ -28,7 +28,7 @@ class BookingDraftSerializer(serializers.Serializer):
         user = self.context['request'].user
         if attrs['address'].user_id != user.id:
             raise serializers.ValidationError({'address_id': 'This address does not belong to the current user.'})
-        code = (attrs.pop('coupon_code', '') or '').strip()
+        code = CouponService.normalize_code(attrs.pop('coupon_code', '') or '')
         if code:
             try:
                 coupon, _subtotal, _discount, _total = CouponService.validate(
