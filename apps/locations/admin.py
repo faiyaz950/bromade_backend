@@ -27,8 +27,8 @@ class CityAdmin(admin.ModelAdmin):
             'City',
             {
                 'description': (
-                    'Customers whose GPS matches this city can book only when “Services live” is on. '
-                    'Turn it off to show the Available soon screen.'
+                    'Customers whose GPS matches this city can browse and book only when “Services live” is on. '
+                    'Turn it off to hide services on home and show Available soon.'
                 ),
                 'fields': ('name', 'slug', 'state', 'is_active'),
             },

@@ -68,3 +68,33 @@ class BookingAPITests(APITestCase):
         booking = Booking.objects.get(pk=booking_id)
         self.assertEqual(booking.assignment_status, Booking.AssignmentStatus.UNASSIGNED)
         self.assertEqual(booking.assignments.count(), 0)
+
+    def test_cannot_book_in_city_marked_available_soon(self):
+        soon_city = City.objects.create(
+            name='Lucknow',
+            slug='lucknow',
+            state='Uttar Pradesh',
+            is_active=False,
+        )
+        soon_address = Address.objects.create(
+            user=self.user,
+            city=soon_city,
+            label='Parents',
+            contact_name='Test User',
+            contact_phone='+919999999999',
+            line1='Hazratganj',
+            pincode='226001',
+        )
+        response = self.client.post(
+            '/api/v1/bookings/create/',
+            {
+                'package_id': str(self.package.id),
+                'address_id': str(soon_address.id),
+                'scheduled_date': (timezone.localdate() + timedelta(days=1)).isoformat(),
+                'scheduled_time': '10:30:00',
+                'quantity': 1,
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('address_id', response.data)

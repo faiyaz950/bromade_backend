@@ -1,36 +1,149 @@
-from __future__ import annotations
-
 import math
 import re
-from decimal import Decimal
 
 from .models import City
 
-_SUFFIXES = (
-    ' municipal corporation',
-    ' nagar nigam',
-    ' urban',
-    ' district',
-    ' city',
+_PLACE_SUFFIXES = (
+    'municipal corporation',
+    'district',
+    'urban',
+    'city',
+    'ncr',
 )
+_NON_ALNUM = re.compile(r'[^a-z0-9\s]+')
+_SPACES = re.compile(r'\s+')
 
 
 def normalize_place(value):
-    text = re.sub(r'\s+', ' ', (value or '').strip().lower())
-    if not text:
-        return ''
+    text = _SPACES.sub(' ', _NON_ALNUM.sub(' ', (value or '').lower())).strip()
     changed = True
-    while changed:
+    while changed and text:
         changed = False
-        for suffix in _SUFFIXES:
-            if text.endswith(suffix) and len(text) > len(suffix) + 2:
-                text = text[: -len(suffix)].strip()
+        for suffix in _PLACE_SUFFIXES:
+            token = f' {suffix}'
+            if text.endswith(token):
+                text = text[: -len(token)].strip()
                 changed = True
+                break
     return text
 
 
-def haversine_km(lat1, lon1, lat2, lon2):
-    radius = 6371.0
+def check_service_coverage(
+    latitude=None,
+    longitude=None,
+    city_name='',
+    place_names=None,
+    city_id=None,
+):
+    cities = list(City.objects.all())
+    live_cities = [city for city in cities if city.is_active]
+    matched = None
+    detected_name = _first_name(city_name, place_names)
+
+    if city_id:
+        matched = next((city for city in cities if str(city.id) == str(city_id)), None)
+        if matched is not None:
+            detected_name = matched.name
+    if matched is None:
+        matched = _match_by_coordinates(cities, latitude, longitude)
+        if matched is not None and not detected_name:
+            detected_name = matched.name
+    if matched is None:
+        matched = _match_by_names(cities, city_name, place_names)
+        if matched is not None and not detected_name:
+            detected_name = matched.name
+
+    if matched is None:
+        return _payload(
+            available=False,
+            city=None,
+            detected_name=detected_name,
+            message=_soon_message(detected_name=detected_name),
+            available_cities=live_cities,
+        )
+
+    if matched.is_active:
+        return _payload(
+            available=True,
+            city=matched,
+            detected_name=detected_name or matched.name,
+            message=f'Home services are live in {matched.name}.',
+            available_cities=live_cities,
+        )
+
+    return _payload(
+        available=False,
+        city=matched,
+        detected_name=detected_name or matched.name,
+        message=_soon_message(city=matched, detected_name=detected_name or matched.name),
+        available_cities=live_cities,
+    )
+
+
+def _first_name(city_name, place_names):
+    if (city_name or '').strip():
+        return city_name.strip()
+    for name in place_names or []:
+        if (name or '').strip():
+            return name.strip()
+    return ''
+
+
+def _city_tokens(city):
+    tokens = {normalize_place(city.name), (city.slug or '').lower()}
+    for alias in (city.aliases or '').split(','):
+        token = normalize_place(alias)
+        if token:
+            tokens.add(token)
+    return {token for token in tokens if token}
+
+
+def _candidate_names(city_name, place_names):
+    names = []
+    if (city_name or '').strip():
+        names.append(city_name.strip())
+    for name in place_names or []:
+        if (name or '').strip() and name.strip() not in names:
+            names.append(name.strip())
+    return names
+
+
+def _match_by_names(cities, city_name, place_names):
+    candidates = [normalize_place(name) for name in _candidate_names(city_name, place_names)]
+    candidates = [name for name in candidates if name]
+    if not candidates:
+        return None
+    for candidate in candidates:
+        for city in cities:
+            if candidate in _city_tokens(city):
+                return city
+    return None
+
+
+def _match_by_coordinates(cities, latitude, longitude):
+    try:
+        lat = float(latitude)
+        lng = float(longitude)
+    except (TypeError, ValueError):
+        return None
+
+    nearest = None
+    nearest_km = None
+    for city in cities:
+        if city.latitude is None or city.longitude is None:
+            continue
+        distance = _haversine_km(lat, lng, float(city.latitude), float(city.longitude))
+        radius = city.service_radius_km or 0
+        if distance > radius:
+            continue
+        if nearest is None or distance < nearest_km:
+            nearest = city
+            nearest_km = distance
+    return nearest
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    radius = 6371
     d_lat = math.radians(lat2 - lat1)
     d_lon = math.radians(lon2 - lon1)
     a = (
@@ -40,53 +153,16 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return 2 * radius * math.asin(math.sqrt(a))
 
 
-def _to_float(value):
-    if value is None or value == '':
-        return None
-    if isinstance(value, Decimal):
-        return float(value)
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+def _soon_message(city=None, detected_name=''):
+    if city is not None and (city.coming_soon_message or '').strip():
+        return city.coming_soon_message.strip()
+    name = ((city.name if city is not None else '') or detected_name).strip()
+    if name:
+        return f"We're not in {name} yet — available soon. We'll show services here as soon as we go live."
+    return "Home services are available soon in your city. We'll show them here as soon as we go live."
 
 
-def _city_names(city: City):
-    names = {normalize_place(city.name), normalize_place(city.slug.replace('-', ' '))}
-    names.update(normalize_place(alias) for alias in city.alias_list())
-    names.discard('')
-    return names
-
-
-def _name_matches(city: City, candidates):
-    city_names = _city_names(city)
-    for raw in candidates:
-        needle = normalize_place(raw)
-        if not needle:
-            continue
-        if needle in city_names:
-            return True
-        for city_name in city_names:
-            if len(city_name) < 4:
-                continue
-            if re.search(rf'\b{re.escape(city_name)}\b', needle):
-                return True
-            if re.search(rf'\b{re.escape(needle)}\b', city_name):
-                return True
-    return False
-
-
-def _gps_distance_km(city: City, latitude, longitude):
-    city_lat = _to_float(city.latitude)
-    city_lng = _to_float(city.longitude)
-    if city_lat is None or city_lng is None:
-        return None
-    return haversine_km(latitude, longitude, city_lat, city_lng)
-
-
-def _serialize_city(city: City | None):
-    if city is None:
-        return None
+def _city_payload(city):
     return {
         'id': str(city.id),
         'name': city.name,
@@ -96,64 +172,11 @@ def _serialize_city(city: City | None):
     }
 
 
-def _detected_name(city, city_name, place_names):
-    if city is not None:
-        return city.name
-    cleaned = (city_name or '').strip()
-    if cleaned:
-        return cleaned
-    for name in place_names or []:
-        if (name or '').strip():
-            return name.strip()
-    return ''
-
-
-def _message_for(*, available, city, detected_name):
-    if available and city is not None:
-        return f'Home services are live in {city.name}.'
-    if city is not None and (city.coming_soon_message or '').strip():
-        return city.coming_soon_message.strip()
-    label = detected_name or 'your city'
-    return f"We're not in {label} yet — available soon."
-
-
-def check_service_coverage(*, latitude=None, longitude=None, city_name='', place_names=None, city_id=None):
-    cities = list(City.objects.all())
-    live_cities = [city for city in cities if city.is_active]
-    candidates = [city_name, *(place_names or [])]
-    lat = _to_float(latitude)
-    lng = _to_float(longitude)
-
-    matched = None
-
-    if city_id:
-        matched = next((city for city in cities if str(city.id) == str(city_id)), None)
-
-    if matched is None and lat is not None and lng is not None:
-        nearby = []
-        for city in cities:
-            distance = _gps_distance_km(city, lat, lng)
-            if distance is None:
-                continue
-            radius = city.service_radius_km or 40
-            if distance <= radius:
-                nearby.append((distance, 0 if city.is_active else 1, city))
-        if nearby:
-            nearby.sort(key=lambda item: (item[0], item[1], item[2].name))
-            matched = nearby[0][2]
-
-    if matched is None:
-        name_hits = [city for city in cities if _name_matches(city, candidates)]
-        if name_hits:
-            name_hits.sort(key=lambda city: (0 if city.is_active else 1, city.name))
-            matched = name_hits[0]
-
-    detected_name = _detected_name(matched, city_name, place_names)
-    available = bool(matched and matched.is_active)
+def _payload(*, available, city, detected_name, message, available_cities):
     return {
         'available': available,
+        'city': _city_payload(city) if city is not None else None,
         'detected_name': detected_name,
-        'message': _message_for(available=available, city=matched, detected_name=detected_name),
-        'city': _serialize_city(matched),
-        'available_cities': [_serialize_city(city) for city in live_cities],
+        'message': message,
+        'available_cities': [_city_payload(item) for item in available_cities],
     }

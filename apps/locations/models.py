@@ -9,8 +9,8 @@ class City(UUIDModel):
     slug = models.SlugField(max_length=140, unique=True)
     state = models.CharField(max_length=120)
     is_active = models.BooleanField(
-        'services live',
         default=True,
+        verbose_name='services live',
         help_text='Turn on to let customers in this city browse and book. Turn off to show Available soon.',
     )
     aliases = models.CharField(
@@ -27,7 +27,7 @@ class City(UUIDModel):
     coming_soon_message = models.CharField(
         max_length=220,
         blank=True,
-        help_text='Optional copy on the Available soon screen. Leave blank for the default message.',
+        help_text='Optional copy when services are hidden on home. Leave blank for the default message.',
     )
 
     class Meta:
@@ -36,9 +36,6 @@ class City(UUIDModel):
 
     def __str__(self):
         return self.name
-
-    def alias_list(self):
-        return [part.strip() for part in (self.aliases or '').split(',') if part.strip()]
 
 
 class Address(UUIDModel):
