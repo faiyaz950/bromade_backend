@@ -59,7 +59,7 @@ class ServicePackageSerializer(serializers.ModelSerializer):
         return city_price.discounted_price if city_price else obj.discounted_price
 
     def get_image_url(self, obj):
-        raw = obj.image_url or obj.service.image_url or obj.service.category.image_url
+        raw = (obj.image_url or '').strip() or obj.service.resolved_image_url()
         return absolute_media_url(self.context.get('request'), raw)
 
 
@@ -110,7 +110,7 @@ class ServiceSerializer(serializers.ModelSerializer):
         return self._inclusion_texts(obj, 'excluded')
 
     def get_image_url(self, obj):
-        return absolute_media_url(self.context.get('request'), obj.image_url or obj.category.image_url)
+        return absolute_media_url(self.context.get('request'), obj.resolved_image_url())
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -137,5 +137,5 @@ class PackageDetailSerializer(ServicePackageSerializer):
             'id': str(obj.service_id),
             'name': obj.service.name,
             'category': obj.service.category.name,
-            'image_url': absolute_media_url(request, obj.service.image_url or obj.service.category.image_url),
+            'image_url': absolute_media_url(request, obj.service.resolved_image_url()),
         }

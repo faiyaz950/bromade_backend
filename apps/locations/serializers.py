@@ -9,6 +9,18 @@ class CitySerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'slug', 'state')
 
 
+class CoverageCheckSerializer(serializers.Serializer):
+    latitude = serializers.FloatField(required=False, allow_null=True)
+    longitude = serializers.FloatField(required=False, allow_null=True)
+    city_name = serializers.CharField(required=False, allow_blank=True, max_length=120)
+    place_names = serializers.ListField(
+        child=serializers.CharField(max_length=120),
+        required=False,
+        allow_empty=True,
+    )
+    city_id = serializers.UUIDField(required=False)
+
+
 class AddressSerializer(serializers.ModelSerializer):
     city = CitySerializer(read_only=True)
     city_id = serializers.PrimaryKeyRelatedField(source='city', queryset=City.objects.filter(is_active=True), write_only=True)

@@ -29,7 +29,7 @@ class BrolyticsAdminSite(AdminSite):
         from apps.catalog.models import Category, HomeHeroSlide, Service
         from apps.coupons.models import Coupon
         from apps.customers.models import CustomerProfile
-        from apps.locations.models import Address
+        from apps.locations.models import Address, City
         from apps.partners.models import PartnerProfile
         from apps.payments.models import Payment
 
@@ -109,12 +109,21 @@ class BrolyticsAdminSite(AdminSite):
                     'tone': 'champagne',
                     'url': reverse('admin:coupons_coupon_changelist'),
                 },
+                {
+                    'label': 'Live service cities',
+                    'value': City.objects.filter(is_active=True).count(),
+                    'hint': f'{City.objects.filter(is_active=False).count()} marked available soon',
+                    'tone': 'sage',
+                    'url': reverse('admin:locations_city_changelist'),
+                },
             ],
             'catalog': {
                 'categories': Category.objects.filter(is_active=True).count(),
                 'services': Service.objects.filter(is_active=True).count(),
                 'slides': HomeHeroSlide.objects.filter(is_active=True).count(),
                 'coupons': Coupon.objects.filter(is_active=True).count(),
+                'live_cities': City.objects.filter(is_active=True).count(),
+                'soon_cities': City.objects.filter(is_active=False).count(),
             },
             'status_breakdown': status_breakdown,
             'assignment_breakdown': assignment_breakdown,

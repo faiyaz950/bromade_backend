@@ -1,13 +1,25 @@
-from rest_framework import generics, response, status
+from rest_framework import generics, permissions, response, status
 from rest_framework.views import APIView
 
 from .models import Address, City
-from .serializers import AddressSerializer, CitySerializer
+from .serializers import AddressSerializer, CitySerializer, CoverageCheckSerializer
+from .services import check_service_coverage
 
 
 class CityListView(generics.ListAPIView):
+    permission_classes = [permissions.AllowAny]
     queryset = City.objects.filter(is_active=True).order_by('name')
     serializer_class = CitySerializer
+
+
+class CoverageCheckView(APIView):
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = CoverageCheckSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return response.Response(check_service_coverage(**serializer.validated_data))
 
 
 class AddressListCreateView(generics.ListCreateAPIView):

@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.urls import reverse
 from django.utils.html import format_html
 
 from .models import (
@@ -83,14 +84,21 @@ class ServiceProcessStepInline(admin.StackedInline):
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
-    list_display = ('thumb', 'name', 'category', 'duration_minutes', 'is_active')
+    list_display = ('thumb', 'name', 'category', 'duration_minutes', 'is_active', 'edit_link')
+    list_display_links = ('thumb', 'name')
     search_fields = ('name', 'slug', 'category__name')
     list_filter = ('category', 'is_active')
     autocomplete_fields = ('category',)
     prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ('image_preview',)
     inlines = [ServiceInclusionInline, ServiceProcessStepInline]
     fieldsets = (
-        (None, {'fields': ('category', 'name', 'slug', 'image_url')}),
+        (
+            None,
+            {
+                'fields': ('category', 'name', 'slug', 'image_preview', 'image', 'image_url'),
+            },
+        ),
         (
             'Detail screen copy',
             {
@@ -106,11 +114,29 @@ class ServiceAdmin(admin.ModelAdmin):
 
     @admin.display(description='')
     def thumb(self, obj):
-        if not obj.image_url:
+        url = obj.resolved_image_url()
+        if not url:
             return '—'
         return format_html(
             '<img src="{}" style="width:42px;height:42px;object-fit:cover;border-radius:10px;" />',
-            obj.image_url,
+            url,
+        )
+
+    @admin.display(description='Current image')
+    def image_preview(self, obj):
+        url = obj.resolved_image_url() if obj.pk else ''
+        if not url:
+            return 'No image yet — upload a file or paste a URL below.'
+        return format_html(
+            '<img src="{}" style="max-width:280px;max-height:180px;object-fit:cover;border-radius:12px;" />',
+            url,
+        )
+
+    @admin.display(description='')
+    def edit_link(self, obj):
+        return format_html(
+            '<a class="button" href="{}">Edit</a>',
+            reverse('admin:catalog_service_change', args=[obj.pk]),
         )
 
 

@@ -7,6 +7,7 @@
 
 ## Locations
 - `GET /api/v1/cities/`
+- `POST /api/v1/coverage/` body: `{ latitude, longitude, city_name, place_names, city_id }`
 - `GET /api/v1/addresses/`
 - `POST /api/v1/addresses/`
 - `GET /api/v1/addresses/{id}/`

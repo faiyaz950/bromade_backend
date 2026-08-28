@@ -80,7 +80,16 @@ class Service(UUIDModel):
         blank=True,
         help_text='Long paragraph under the headline on the service detail screen.',
     )
-    image_url = models.URLField(max_length=500, blank=True)
+    image = models.ImageField(
+        upload_to='catalog/services/',
+        blank=True,
+        help_text='Upload the photo shown on home and service detail.',
+    )
+    image_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text='Or paste a https /media URL if you are not uploading a file.',
+    )
     duration_minutes = models.PositiveIntegerField(default=60)
     is_active = models.BooleanField(default=True)
 
@@ -92,6 +101,16 @@ class Service(UUIDModel):
         if not self.slug:
             self.slug = slugify(f'{self.category.name}-{self.name}')
         super().save(*args, **kwargs)
+
+    def resolved_image_url(self) -> str:
+        if self.image:
+            return self.image.url
+        raw = (self.image_url or '').strip()
+        if raw:
+            return raw
+        if self.category_id:
+            return (self.category.image_url or '').strip()
+        return ''
 
     def __str__(self):
         return self.name

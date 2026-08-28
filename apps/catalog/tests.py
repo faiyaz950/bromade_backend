@@ -1,8 +1,19 @@
+from io import BytesIO
+
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
 from apps.catalog.models import Category, HomeHeroSlide, Service, ServiceInclusion, ServicePackage, ServiceProcessStep
+
+
+def _png_upload(name='service.png'):
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new('RGB', (12, 12), color='#F07820').save(buffer, format='PNG')
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type='image/png')
 
 
 class CatalogAPITests(APITestCase):
@@ -89,3 +100,12 @@ class CatalogAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual([slide['title'] for slide in response.data], ['First', 'Later'])
         self.assertEqual(response.data[0]['image_url'], 'https://cdn.example.com/first.jpg')
+
+    def test_service_uploaded_image_is_returned_by_api(self):
+        self.service.image.save('bathroom.png', _png_upload('bathroom.png'), save=True)
+
+        response = self.client.get('/api/v1/catalog/categories/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        image_url = response.data[0]['services'][0]['image_url']
+        self.assertIn('/media/catalog/services/', image_url)
+        self.assertTrue(image_url.endswith('.png'))

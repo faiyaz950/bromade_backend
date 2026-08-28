@@ -259,18 +259,37 @@ class Command(BaseCommand):
 
     def _seed_cities(self):
         city_defs = [
-            ('Bengaluru', 'bengaluru', 'Karnataka'),
-            ('Mumbai', 'mumbai', 'Maharashtra'),
-            ('Delhi', 'delhi', 'Delhi'),
-            ('Hyderabad', 'hyderabad', 'Telangana'),
-            ('Pune', 'pune', 'Maharashtra'),
+            ('Bengaluru', 'bengaluru', 'Karnataka', 'Bangalore, Bengaluru Urban', 12.9716, 77.5946),
+            ('Mumbai', 'mumbai', 'Maharashtra', 'Bombay, Mumbai City', 19.0760, 72.8777),
+            ('Delhi', 'delhi', 'Delhi', 'New Delhi, Delhi NCR, NCR', 28.6139, 77.2090),
+            ('Hyderabad', 'hyderabad', 'Telangana', 'Secunderabad', 17.3850, 78.4867),
+            ('Pune', 'pune', 'Maharashtra', 'Poona, Pimpri Chinchwad', 18.5204, 73.8567),
         ]
         cities = []
-        for name, slug, state in city_defs:
-            city, _ = City.objects.get_or_create(
+        for name, slug, state, aliases, latitude, longitude in city_defs:
+            city, created = City.objects.get_or_create(
                 slug=slug,
-                defaults={'name': name, 'state': state, 'is_active': True},
+                defaults={
+                    'name': name,
+                    'state': state,
+                    'is_active': True,
+                    'aliases': aliases,
+                    'latitude': latitude,
+                    'longitude': longitude,
+                    'service_radius_km': 45,
+                },
             )
+            if not created:
+                update_fields = []
+                if not city.aliases:
+                    city.aliases = aliases
+                    update_fields.append('aliases')
+                if city.latitude is None or city.longitude is None:
+                    city.latitude = latitude
+                    city.longitude = longitude
+                    update_fields.extend(['latitude', 'longitude'])
+                if update_fields:
+                    city.save(update_fields=update_fields)
             cities.append(city)
         return cities
 
