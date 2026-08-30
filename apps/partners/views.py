@@ -1,19 +1,38 @@
+from datetime import timedelta
+
+from django.db.models import Sum
+from django.utils import timezone
 from rest_framework import generics, response, status
 
 from apps.bookings.models import Booking, BookingAssignment
+from apps.payments.models import Payment
 
 from .assignment_service import AssignmentService
-from .permissions import IsPartner
+from .permissions import IsApprovedPartner, IsPartnerAccount
 from .serializers import (
     PartnerAvailabilitySerializer,
+    PartnerDeviceTokenSerializer,
     PartnerJobRejectSerializer,
     PartnerJobSerializer,
     PartnerProfileSerializer,
+    PartnerUnavailableDateSerializer,
+    PartnerVisitActionSerializer,
 )
+from .visit_service import VisitService
+
+
+def _job_payload(request, booking, assignment=None):
+    partner = request.user.partner_profile
+    if assignment is None:
+        assignment = booking.assignments.filter(partner=partner).order_by('-assigned_at').first()
+    return PartnerJobSerializer(
+        booking,
+        context={'request': request, 'partner': partner, 'assignment': assignment},
+    ).data
 
 
 class PartnerMeView(generics.RetrieveUpdateAPIView):
-    permission_classes = [IsPartner]
+    permission_classes = [IsPartnerAccount]
     serializer_class = PartnerProfileSerializer
 
     def get_object(self):
@@ -33,31 +52,134 @@ class PartnerMeView(generics.RetrieveUpdateAPIView):
         return response.Response(PartnerProfileSerializer(instance).data)
 
 
+class PartnerDeviceTokenView(generics.GenericAPIView):
+    permission_classes = [IsPartnerAccount]
+    serializer_class = PartnerDeviceTokenSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        token, _created = request.user.partner_profile.device_tokens.update_or_create(
+            token=serializer.validated_data['token'],
+            defaults={'platform': serializer.validated_data.get('platform', 'android')},
+        )
+        return response.Response(PartnerDeviceTokenSerializer(token).data, status=status.HTTP_201_CREATED)
+
+
+class PartnerUnavailableDateListView(generics.ListCreateAPIView):
+    permission_classes = [IsApprovedPartner]
+    serializer_class = PartnerUnavailableDateSerializer
+
+    def get_queryset(self):
+        return self.request.user.partner_profile.unavailable_dates.filter(
+            date__gte=timezone.localdate() - timedelta(days=1)
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(partner=self.request.user.partner_profile)
+
+
+class PartnerUnavailableDateDeleteView(generics.DestroyAPIView):
+    permission_classes = [IsApprovedPartner]
+    serializer_class = PartnerUnavailableDateSerializer
+
+    def get_queryset(self):
+        return self.request.user.partner_profile.unavailable_dates.all()
+
+
+class PartnerEarningsView(generics.GenericAPIView):
+    permission_classes = [IsApprovedPartner]
+
+    def get(self, request):
+        partner = request.user.partner_profile
+        today = timezone.localdate()
+        week_start = today - timedelta(days=today.weekday())
+        month_start = today.replace(day=1)
+        completed = Booking.objects.filter(
+            assignments__partner=partner,
+            assignments__status=BookingAssignment.Status.ACCEPTED,
+            status=Booking.Status.COMPLETED,
+        ).distinct()
+
+        def _sum(qs):
+            return qs.aggregate(total=Sum('total_amount'))['total'] or 0
+
+        def _count(qs):
+            return qs.count()
+
+        cash_paid = completed.filter(
+            payments__method=Payment.Method.CASH,
+            payments__status=Payment.Status.PAID,
+        ).distinct()
+        online_paid = completed.filter(
+            payments__method=Payment.Method.ONLINE,
+            payments__status=Payment.Status.PAID,
+        ).distinct()
+
+        return response.Response(
+            {
+                'today_amount': _sum(completed.filter(scheduled_date=today)),
+                'today_count': _count(completed.filter(scheduled_date=today)),
+                'week_amount': _sum(completed.filter(scheduled_date__gte=week_start)),
+                'week_count': _count(completed.filter(scheduled_date__gte=week_start)),
+                'month_amount': _sum(completed.filter(scheduled_date__gte=month_start)),
+                'month_count': _count(completed.filter(scheduled_date__gte=month_start)),
+                'completed_amount': _sum(completed),
+                'completed_count': _count(completed),
+                'cash_collected': _sum(cash_paid),
+                'online_collected': _sum(online_paid),
+            }
+        )
+
+
 class PartnerJobListView(generics.ListAPIView):
-    permission_classes = [IsPartner]
+    permission_classes = [IsApprovedPartner]
     serializer_class = PartnerJobSerializer
+
+    def _requested_status(self):
+        return self.request.query_params.get('status', BookingAssignment.Status.PENDING)
 
     def get_queryset(self):
         partner = self.request.user.partner_profile
-        assignment_status = self.request.query_params.get('status', BookingAssignment.Status.PENDING)
+        requested = self._requested_status()
+        if requested == 'completed':
+            booking_ids = BookingAssignment.objects.filter(
+                partner=partner,
+                status=BookingAssignment.Status.ACCEPTED,
+            ).values_list('booking_id', flat=True)
+            return (
+                Booking.objects.filter(id__in=booking_ids, status=Booking.Status.COMPLETED)
+                .select_related('customer', 'address', 'city')
+                .prefetch_related('items', 'assignments', 'payments', 'rating')
+            )
+
+        assignment_status = requested
         booking_ids = BookingAssignment.objects.filter(
             partner=partner,
             status=assignment_status,
         ).values_list('booking_id', flat=True)
-        return (
-            Booking.objects.filter(id__in=booking_ids, status=Booking.Status.CONFIRMED)
-            .select_related('customer', 'address', 'city')
-            .prefetch_related('items', 'assignments', 'payments')
-        )
+        queryset = Booking.objects.filter(id__in=booking_ids).select_related(
+            'customer', 'address', 'city'
+        ).prefetch_related('items', 'assignments', 'payments', 'rating')
+        if assignment_status in {
+            BookingAssignment.Status.PENDING,
+            BookingAssignment.Status.ACCEPTED,
+        }:
+            queryset = queryset.filter(status=Booking.Status.CONFIRMED)
+        return queryset.order_by('scheduled_date', 'scheduled_time')
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context['partner'] = self.request.user.partner_profile
+        requested = self._requested_status()
+        assignment_status = (
+            BookingAssignment.Status.ACCEPTED if requested == 'completed' else requested
+        )
         assignments = {
             a.booking_id: a
             for a in BookingAssignment.objects.filter(
                 partner=self.request.user.partner_profile,
-                status=self.request.query_params.get('status', BookingAssignment.Status.PENDING),
+                status=assignment_status,
             )
         }
         context['assignments_map'] = assignments
@@ -79,7 +201,7 @@ class PartnerJobListView(generics.ListAPIView):
 
 
 class PartnerJobDetailView(generics.RetrieveAPIView):
-    permission_classes = [IsPartner]
+    permission_classes = [IsApprovedPartner]
     serializer_class = PartnerJobSerializer
 
     def get_queryset(self):
@@ -88,22 +210,16 @@ class PartnerJobDetailView(generics.RetrieveAPIView):
         return (
             Booking.objects.filter(id__in=booking_ids)
             .select_related('customer', 'address', 'city')
-            .prefetch_related('items', 'assignments', 'payments')
+            .prefetch_related('items', 'assignments', 'payments', 'rating')
         )
 
     def retrieve(self, request, *args, **kwargs):
         booking = self.get_object()
-        partner = request.user.partner_profile
-        assignment = booking.assignments.filter(partner=partner).order_by('-assigned_at').first()
-        serializer = self.get_serializer(
-            booking,
-            context={'request': request, 'partner': partner, 'assignment': assignment},
-        )
-        return response.Response(serializer.data)
+        return response.Response(_job_payload(request, booking))
 
 
 class PartnerJobAcceptView(generics.GenericAPIView):
-    permission_classes = [IsPartner]
+    permission_classes = [IsApprovedPartner]
 
     def post(self, request, pk):
         partner = request.user.partner_profile
@@ -116,16 +232,12 @@ class PartnerJobAcceptView(generics.GenericAPIView):
             return response.Response({'detail': 'Assignment not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         AssignmentService.accept_assignment(partner=partner, assignment_id=str(assignment.id))
-        booking = assignment.booking
-        serializer = PartnerJobSerializer(
-            booking,
-            context={'request': request, 'partner': partner, 'assignment': assignment},
-        )
-        return response.Response(serializer.data)
+        assignment.refresh_from_db()
+        return response.Response(_job_payload(request, assignment.booking, assignment))
 
 
 class PartnerJobRejectView(generics.GenericAPIView):
-    permission_classes = [IsPartner]
+    permission_classes = [IsApprovedPartner]
     serializer_class = PartnerJobRejectSerializer
 
     def post(self, request, pk):
@@ -146,3 +258,50 @@ class PartnerJobRejectView(generics.GenericAPIView):
             reason=serializer.validated_data.get('reason', ''),
         )
         return response.Response({'detail': 'Job rejected. Reassignment attempted if another partner is available.'})
+
+
+class PartnerVisitAdvanceView(generics.GenericAPIView):
+    permission_classes = [IsApprovedPartner]
+    serializer_class = PartnerVisitActionSerializer
+
+    def post(self, request, pk):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            if serializer.validated_data['visit_status'] == Booking.VisitStatus.COMPLETED:
+                booking = VisitService.complete(
+                    partner=request.user.partner_profile,
+                    assignment_id=str(pk),
+                    checklist=serializer.validated_data.get('checklist'),
+                )
+            else:
+                booking = VisitService.advance(
+                    partner=request.user.partner_profile,
+                    assignment_id=str(pk),
+                    visit_status=serializer.validated_data['visit_status'],
+                )
+        except BookingAssignment.DoesNotExist:
+            return response.Response({'detail': 'Assignment not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as exc:
+            return response.Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return response.Response(_job_payload(request, booking))
+
+
+class PartnerCashCollectView(generics.GenericAPIView):
+    permission_classes = [IsApprovedPartner]
+
+    def post(self, request, pk):
+        try:
+            VisitService.collect_cash(
+                partner=request.user.partner_profile,
+                assignment_id=str(pk),
+                required=True,
+            )
+            assignment = BookingAssignment.objects.select_related('booking').get(
+                pk=pk, partner=request.user.partner_profile
+            )
+        except BookingAssignment.DoesNotExist:
+            return response.Response({'detail': 'Assignment not found.'}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as exc:
+            return response.Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return response.Response(_job_payload(request, assignment.booking, assignment))

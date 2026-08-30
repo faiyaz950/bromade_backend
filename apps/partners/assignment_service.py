@@ -32,6 +32,7 @@ class AssignmentService:
                 services__service=service,
             )
             .exclude(id__in=excluded_partner_ids)
+            .exclude(unavailable_dates__date=booking.scheduled_date)
             .annotate(
                 active_jobs=Count(
                     'assignments',
@@ -76,6 +77,9 @@ class AssignmentService:
             to_status=Booking.AssignmentStatus.PENDING,
             note=f'Assigned to partner {eligible.full_name}.',
         )
+        from apps.partners.notifications import notify_partner_new_job
+
+        notify_partner_new_job(eligible, booking)
         return assignment
 
     @staticmethod

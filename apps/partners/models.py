@@ -58,3 +58,29 @@ class PartnerService(UUIDModel):
 
     def __str__(self):
         return f'{self.partner.full_name} · {self.service.name}'
+
+
+class PartnerDeviceToken(UUIDModel):
+    partner = models.ForeignKey(PartnerProfile, on_delete=models.CASCADE, related_name='device_tokens')
+    token = models.CharField(max_length=255)
+    platform = models.CharField(max_length=20, default='android')
+
+    class Meta:
+        unique_together = ('partner', 'token')
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f'{self.partner.full_name} · {self.platform}'
+
+
+class PartnerUnavailableDate(UUIDModel):
+    partner = models.ForeignKey(PartnerProfile, on_delete=models.CASCADE, related_name='unavailable_dates')
+    date = models.DateField()
+    note = models.CharField(max_length=120, blank=True)
+
+    class Meta:
+        unique_together = ('partner', 'date')
+        ordering = ['date']
+
+    def __str__(self):
+        return f'{self.partner.full_name} · {self.date}'

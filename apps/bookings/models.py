@@ -6,12 +6,29 @@ from apps.common.models import UUIDModel
 from apps.locations.models import Address, City
 
 
+def default_visit_checklist():
+    return [
+        {'id': 'reached', 'label': 'Reached the customer location', 'done': False},
+        {'id': 'service', 'label': 'Finished the booked service', 'done': False},
+        {'id': 'wrap', 'label': 'Left the home tidy', 'done': False},
+    ]
+
+
 class Booking(UUIDModel):
     class Status(models.TextChoices):
         DRAFT = 'draft', 'Draft'
         PENDING_PAYMENT = 'pending_payment', 'Pending Payment'
         CONFIRMED = 'confirmed', 'Confirmed'
+        COMPLETED = 'completed', 'Completed'
         CANCELLED = 'cancelled', 'Cancelled'
+
+    class VisitStatus(models.TextChoices):
+        NONE = 'none', 'Not started'
+        SCHEDULED = 'scheduled', 'Scheduled'
+        ON_THE_WAY = 'on_the_way', 'On the way'
+        ARRIVED = 'arrived', 'Arrived'
+        IN_PROGRESS = 'in_progress', 'In progress'
+        COMPLETED = 'completed', 'Completed'
 
     class AssignmentStatus(models.TextChoices):
         UNASSIGNED = 'unassigned', 'Unassigned'
@@ -42,16 +59,38 @@ class Booking(UUIDModel):
     )
     coupon_code = models.CharField(max_length=40, blank=True, default='')
     notes = models.TextField(blank=True)
+    visit_status = models.CharField(
+        max_length=30,
+        choices=VisitStatus.choices,
+        default=VisitStatus.NONE,
+    )
+    checklist = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['customer', 'status']),
             models.Index(fields=['scheduled_date', 'scheduled_time']),
+            models.Index(fields=['visit_status']),
         ]
 
     def __str__(self):
         return f'Booking {self.pk} - {self.customer.phone_number}'
+
+    def start_visit_tracking(self, note=''):
+        previous = self.status
+        self.status = self.Status.CONFIRMED
+        if self.visit_status in {'', self.VisitStatus.NONE}:
+            self.visit_status = self.VisitStatus.SCHEDULED
+        if not self.checklist:
+            self.checklist = default_visit_checklist()
+        self.save(update_fields=['status', 'visit_status', 'checklist', 'updated_at'])
+        if previous != self.Status.CONFIRMED:
+            self.status_logs.create(
+                from_status=previous,
+                to_status=self.Status.CONFIRMED,
+                note=note or 'Booking confirmed.',
+            )
 
 
 class BookingItem(UUIDModel):
@@ -108,3 +147,15 @@ class BookingAssignment(UUIDModel):
 
     def __str__(self):
         return f'{self.booking_id} -> {self.partner_id} ({self.status})'
+
+
+class BookingRating(UUIDModel):
+    booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name='rating')
+    stars = models.PositiveSmallIntegerField()
+    comment = models.CharField(max_length=400, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.booking_id} · {self.stars}★'

@@ -57,6 +57,8 @@ class BookingItemSerializer(serializers.ModelSerializer):
 class BookingSerializer(serializers.ModelSerializer):
     items = BookingItemSerializer(many=True, read_only=True)
     payment_method = serializers.SerializerMethodField()
+    rating_stars = serializers.SerializerMethodField()
+    rating_comment = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -65,11 +67,14 @@ class BookingSerializer(serializers.ModelSerializer):
             'scheduled_date',
             'scheduled_time',
             'status',
+            'visit_status',
             'subtotal_amount',
             'discount_amount',
             'total_amount',
             'coupon_code',
             'payment_method',
+            'rating_stars',
+            'rating_comment',
             'notes',
             'items',
             'created_at',
@@ -78,6 +83,19 @@ class BookingSerializer(serializers.ModelSerializer):
     def get_payment_method(self, obj):
         latest_payment = max(obj.payments.all(), default=None, key=lambda p: p.created_at)
         return latest_payment.method if latest_payment else None
+
+    def get_rating_stars(self, obj):
+        rating = getattr(obj, 'rating', None)
+        return rating.stars if rating else None
+
+    def get_rating_comment(self, obj):
+        rating = getattr(obj, 'rating', None)
+        return rating.comment if rating else ''
+
+
+class BookingRatingSerializer(serializers.Serializer):
+    stars = serializers.IntegerField(min_value=1, max_value=5)
+    comment = serializers.CharField(required=False, allow_blank=True, max_length=400)
 
 
 class BookingPriceSummarySerializer(serializers.Serializer):

@@ -28,14 +28,7 @@ class MockRazorpayGateway(PaymentGateway):
         payment.save(update_fields=['gateway_payment_id', 'status', 'payload', 'updated_at'])
 
         booking = payment.booking
-        previous_status = booking.status
-        booking.status = Booking.Status.CONFIRMED
-        booking.save(update_fields=['status', 'updated_at'])
-        booking.status_logs.create(
-            from_status=previous_status,
-            to_status=Booking.Status.CONFIRMED,
-            note='Payment verified successfully.',
-        )
+        booking.start_visit_tracking(note='Payment verified successfully.')
 
         from apps.partners.assignment_service import AssignmentService
 

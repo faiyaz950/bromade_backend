@@ -6,6 +6,7 @@ from .views import (
     BookingDetailView,
     BookingListView,
     BookingPriceSummaryView,
+    BookingRateView,
 )
 
 urlpatterns = [
@@ -13,5 +14,6 @@ urlpatterns = [
     path('', BookingListView.as_view(), name='booking-list'),
     path('create/', BookingCreateView.as_view(), name='booking-create'),
     path('<uuid:pk>/confirm/', BookingConfirmView.as_view(), name='booking-confirm'),
+    path('<uuid:pk>/rate/', BookingRateView.as_view(), name='booking-rate'),
     path('<uuid:pk>/', BookingDetailView.as_view(), name='booking-detail'),
 ]

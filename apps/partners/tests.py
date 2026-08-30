@@ -5,10 +5,11 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
-from apps.bookings.models import Booking, BookingAssignment, BookingItem, BookingStatusLog
+from apps.bookings.models import Booking, BookingAssignment, BookingRating
 from apps.catalog.models import Category, CityPackagePrice, Service, ServicePackage
 from apps.locations.models import Address, City
-from apps.partners.models import PartnerCity, PartnerProfile, PartnerService
+from apps.partners.models import PartnerCity, PartnerProfile, PartnerService, PartnerUnavailableDate
+from apps.payments.models import Payment
 
 
 class PartnerAssignmentTests(APITestCase):
@@ -59,6 +60,7 @@ class PartnerAssignmentTests(APITestCase):
         self.client.force_authenticate(user=self.customer)
 
     def _create_and_pay_booking(self):
+        self.client.force_authenticate(user=self.customer)
         booking_response = self.client.post(
             '/api/v1/bookings/create/',
             {
@@ -86,6 +88,50 @@ class PartnerAssignmentTests(APITestCase):
         )
         self.assertEqual(verify_response.status_code, status.HTTP_200_OK)
         return booking_id
+
+    def _create_cash_booking(self):
+        self.client.force_authenticate(user=self.customer)
+        booking_response = self.client.post(
+            '/api/v1/bookings/create/',
+            {
+                'package_id': str(self.package.id),
+                'address_id': str(self.address.id),
+                'scheduled_date': (timezone.localdate() + timedelta(days=1)).isoformat(),
+                'scheduled_time': '10:30:00',
+                'quantity': 1,
+            },
+            format='json',
+        )
+        self.assertEqual(booking_response.status_code, status.HTTP_201_CREATED)
+        booking_id = booking_response.data['id']
+        payment_order = self.client.post(
+            '/api/v1/payments/orders/',
+            {'booking_id': booking_id, 'method': 'cash'},
+            format='json',
+        )
+        self.assertEqual(payment_order.status_code, status.HTTP_201_CREATED)
+        return booking_id
+
+    def _accept_assignment(self, booking_id, partner_user=None):
+        assignment = BookingAssignment.objects.get(
+            booking_id=booking_id,
+            status=BookingAssignment.Status.PENDING,
+        )
+        user = partner_user or assignment.partner.user
+        self.client.force_authenticate(user=user)
+        accept_response = self.client.post(f'/api/v1/partner/jobs/assignments/{assignment.id}/accept/')
+        self.assertEqual(accept_response.status_code, status.HTTP_200_OK)
+        return assignment
+
+    def _advance(self, assignment_id, visit_status, checklist=None):
+        payload = {'visit_status': visit_status}
+        if checklist is not None:
+            payload['checklist'] = checklist
+        return self.client.post(
+            f'/api/v1/partner/jobs/assignments/{assignment_id}/visit/',
+            payload,
+            format='json',
+        )
 
     def test_auto_assignment_on_payment_confirmation(self):
         booking_id = self._create_and_pay_booking()
@@ -141,3 +187,142 @@ class PartnerAssignmentTests(APITestCase):
         self.client.force_authenticate(user=self.customer)
         response = self.client.get('/api/v1/partner/jobs/')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_pending_partner_can_load_profile_but_not_jobs(self):
+        pending_user = User.objects.create_user(phone_number='+919888888803')
+        PartnerProfile.objects.create(
+            user=pending_user,
+            full_name='Waiting Partner',
+            is_active=False,
+            approval_status=PartnerProfile.ApprovalStatus.PENDING,
+        )
+        self.client.force_authenticate(user=pending_user)
+        me = self.client.get('/api/v1/partner/me/')
+        self.assertEqual(me.status_code, status.HTTP_200_OK)
+        self.assertEqual(me.data['approval_status'], 'pending')
+        jobs = self.client.get('/api/v1/partner/jobs/')
+        self.assertEqual(jobs.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_visit_must_advance_one_step_then_complete(self):
+        booking_id = self._create_and_pay_booking()
+        assignment = self._accept_assignment(booking_id)
+
+        too_early = self._advance(assignment.id, 'completed')
+        self.assertEqual(too_early.status_code, status.HTTP_400_BAD_REQUEST)
+
+        skip = self._advance(assignment.id, 'arrived')
+        self.assertEqual(skip.status_code, status.HTTP_400_BAD_REQUEST)
+
+        on_way = self._advance(assignment.id, 'on_the_way')
+        self.assertEqual(on_way.status_code, status.HTTP_200_OK)
+        self.assertEqual(on_way.data['visit_status'], 'on_the_way')
+
+        arrived = self._advance(assignment.id, 'arrived')
+        self.assertEqual(arrived.status_code, status.HTTP_200_OK)
+        started = self._advance(assignment.id, 'in_progress')
+        self.assertEqual(started.status_code, status.HTTP_200_OK)
+
+        completed = self._advance(assignment.id, 'completed')
+        self.assertEqual(completed.status_code, status.HTTP_200_OK)
+        booking = Booking.objects.get(pk=booking_id)
+        self.assertEqual(booking.status, Booking.Status.COMPLETED)
+        self.assertEqual(booking.visit_status, Booking.VisitStatus.COMPLETED)
+        self.assertTrue(all(item.get('done') for item in booking.checklist))
+
+        accepted = self.client.get('/api/v1/partner/jobs/', {'status': 'accepted'})
+        self.assertEqual(accepted.data, [])
+        completed = self.client.get('/api/v1/partner/jobs/', {'status': 'completed'})
+        self.assertEqual(len(completed.data), 1)
+        self.assertEqual(completed.data[0]['id'], booking_id)
+
+        earnings = self.client.get('/api/v1/partner/earnings/')
+        self.assertEqual(earnings.status_code, status.HTTP_200_OK)
+        self.assertEqual(earnings.data['completed_count'], 1)
+        self.assertGreater(float(earnings.data['completed_amount']), 0)
+
+        self.client.force_authenticate(user=self.customer)
+        rate = self.client.post(
+            f'/api/v1/bookings/{booking_id}/rate/',
+            {'stars': 5, 'comment': 'On time and tidy.'},
+            format='json',
+        )
+        self.assertEqual(rate.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(rate.data['rating_stars'], 5)
+        self.assertEqual(BookingRating.objects.filter(booking_id=booking_id).count(), 1)
+
+        again = self.client.post(
+            f'/api/v1/bookings/{booking_id}/rate/',
+            {'stars': 4},
+            format='json',
+        )
+        self.assertEqual(again.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.client.force_authenticate(user=self.partner_user)
+        me = self.client.get('/api/v1/partner/me/')
+        self.assertEqual(float(me.data['average_rating']), 5.0)
+        self.assertEqual(me.data['rating_count'], 1)
+
+    def test_cash_collect_and_auto_collect_on_complete(self):
+        booking_id = self._create_cash_booking()
+        assignment = self._accept_assignment(booking_id)
+        payment = Payment.objects.get(booking_id=booking_id)
+        self.assertEqual(payment.status, Payment.Status.CASH_PENDING)
+
+        collect = self.client.post(f'/api/v1/partner/jobs/assignments/{assignment.id}/collect-cash/')
+        self.assertEqual(collect.status_code, status.HTTP_200_OK)
+        self.assertTrue(collect.data['cash_collected'])
+        payment.refresh_from_db()
+        self.assertEqual(payment.status, Payment.Status.PAID)
+
+        booking_id_2 = self._create_cash_booking()
+        assignment_2 = BookingAssignment.objects.get(
+            booking_id=booking_id_2,
+            status=BookingAssignment.Status.PENDING,
+        )
+        self.client.force_authenticate(user=assignment_2.partner.user)
+        self.client.post(f'/api/v1/partner/jobs/assignments/{assignment_2.id}/accept/')
+        for step in ('on_the_way', 'arrived', 'in_progress', 'completed'):
+            response = self._advance(assignment_2.id, step)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        payment_2 = Payment.objects.get(booking_id=booking_id_2)
+        self.assertEqual(payment_2.status, Payment.Status.PAID)
+
+    def test_unavailable_date_skips_partner_in_auto_assign(self):
+        scheduled = timezone.localdate() + timedelta(days=1)
+        PartnerUnavailableDate.objects.create(partner=self.partner, date=scheduled)
+        booking_id = self._create_and_pay_booking()
+        assignment = BookingAssignment.objects.get(booking_id=booking_id)
+        self.assertEqual(assignment.partner_id, self.partner_2.id)
+
+        self.client.force_authenticate(user=self.partner_user)
+        blocked = self.client.post(
+            '/api/v1/partner/unavailable-dates/',
+            {'date': (timezone.localdate() + timedelta(days=3)).isoformat()},
+            format='json',
+        )
+        self.assertEqual(blocked.status_code, status.HTTP_201_CREATED)
+        listed = self.client.get('/api/v1/partner/unavailable-dates/')
+        self.assertEqual(len(listed.data), 2)
+
+    def test_device_token_and_reject_reason(self):
+        self.client.force_authenticate(user=self.partner_user)
+        token = self.client.post(
+            '/api/v1/partner/me/device-token/',
+            {'token': 'local-test-token', 'platform': 'android'},
+            format='json',
+        )
+        self.assertEqual(token.status_code, status.HTTP_201_CREATED)
+
+        booking_id = self._create_and_pay_booking()
+        assignment = BookingAssignment.objects.get(booking_id=booking_id, partner=self.partner)
+        self.client.force_authenticate(user=self.partner_user)
+        reject = self.client.post(
+            f'/api/v1/partner/jobs/assignments/{assignment.id}/reject/',
+            {'reason': 'Too far'},
+            format='json',
+        )
+        self.assertEqual(reject.status_code, status.HTTP_200_OK)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.rejection_reason, 'Too far')
+        rejected_jobs = self.client.get('/api/v1/partner/jobs/', {'status': 'rejected'})
+        self.assertEqual(len(rejected_jobs.data), 1)

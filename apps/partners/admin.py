@@ -5,7 +5,7 @@ from django.utils.html import format_html
 
 from apps.bookings.models import BookingAssignment
 
-from .models import PartnerCity, PartnerProfile, PartnerService
+from .models import PartnerCity, PartnerProfile, PartnerService, PartnerUnavailableDate
 
 
 class PartnerCityInline(admin.TabularInline):
@@ -35,6 +35,12 @@ class PartnerAssignmentInline(admin.TabularInline):
         return False
 
 
+class PartnerUnavailableDateInline(admin.TabularInline):
+    model = PartnerUnavailableDate
+    extra = 0
+    fields = ('date', 'note')
+
+
 @admin.register(PartnerProfile)
 class PartnerProfileAdmin(admin.ModelAdmin):
     list_display = (
@@ -53,7 +59,7 @@ class PartnerProfileAdmin(admin.ModelAdmin):
     search_fields = ('full_name', 'user__phone_number', 'user__first_name', 'user__last_name')
     readonly_fields = ('created_at', 'updated_at')
     autocomplete_fields = ('user',)
-    inlines = [PartnerCityInline, PartnerServiceInline, PartnerAssignmentInline]
+    inlines = [PartnerCityInline, PartnerServiceInline, PartnerUnavailableDateInline, PartnerAssignmentInline]
     actions = ('approve_partners', 'reject_partners', 'activate_partners', 'deactivate_partners')
     fieldsets = (
         ('Partner', {'fields': ('user', 'full_name', 'approval_status', 'approval_note')}),

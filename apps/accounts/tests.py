@@ -115,3 +115,24 @@ class AuthAPITests(APITestCase):
         self.assertEqual(me_response.status_code, status.HTTP_200_OK)
         self.assertEqual(me_response.data['full_name'], 'Faiyaz Mujtaba')
         self.assertEqual(me_response.data['phone_number'], '+918340715516')
+
+    def test_refresh_token_issues_new_access_token(self):
+        request_response = self.client.post(
+            '/api/v1/auth/otp/request/',
+            {'phone_number': '+919222222221'},
+            format='json',
+        )
+        verify_response = self.client.post(
+            '/api/v1/auth/otp/verify/',
+            {
+                'phone_number': '+919222222221',
+                'code': request_response.data['otp_code'],
+                'first_name': 'Ravi',
+                'last_name': 'Kumar',
+            },
+            format='json',
+        )
+        refresh = verify_response.data['refresh']
+        refreshed = self.client.post('/api/v1/auth/token/refresh/', {'refresh': refresh}, format='json')
+        self.assertEqual(refreshed.status_code, status.HTTP_200_OK)
+        self.assertIn('access', refreshed.data)

@@ -3,7 +3,7 @@ from django.utils.html import format_html
 
 from apps.payments.models import Payment
 
-from .models import Booking, BookingAssignment, BookingItem, BookingStatusLog
+from .models import Booking, BookingAssignment, BookingItem, BookingRating, BookingStatusLog
 
 
 class BookingItemInline(admin.TabularInline):
@@ -61,7 +61,7 @@ class BookingAdmin(admin.ModelAdmin):
         'amount_display',
         'created_at',
     )
-    list_filter = ('status', 'assignment_status', 'city', 'scheduled_date')
+    list_filter = ('status', 'visit_status', 'assignment_status', 'city', 'scheduled_date')
     search_fields = (
         'customer__phone_number',
         'customer__first_name',
@@ -83,7 +83,8 @@ class BookingAdmin(admin.ModelAdmin):
     autocomplete_fields = ('customer', 'address', 'city')
     inlines = [BookingItemInline, BookingAssignmentInline, PaymentInline, BookingStatusLogInline]
     fieldsets = (
-        ('Customer order', {'fields': ('id', 'customer', 'status', 'assignment_status', 'notes')}),
+        ('Customer order', {'fields': ('id', 'customer', 'status', 'visit_status', 'assignment_status', 'notes')}),
+        ('Visit checklist', {'fields': ('checklist',)}),
         ('Schedule & location', {'fields': ('scheduled_date', 'scheduled_time', 'city', 'address')}),
         ('Pricing', {'fields': ('subtotal_amount', 'coupon', 'coupon_code', 'discount_amount', 'total_amount')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
@@ -229,3 +230,26 @@ class BookingAssignmentAdmin(admin.ModelAdmin):
     @admin.display(description='Amount')
     def amount_display(self, obj):
         return format_html('<span class="bl-amount">₹{}</span>', obj.booking.total_amount)
+
+
+@admin.register(BookingRating)
+class BookingRatingAdmin(admin.ModelAdmin):
+    list_display = ('short_id', 'stars', 'booking_link', 'comment', 'created_at')
+    list_filter = ('stars',)
+    search_fields = ('booking__id', 'comment', 'booking__customer__phone_number')
+    readonly_fields = ('created_at', 'updated_at')
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('booking', 'booking__customer')
+
+    @admin.display(description='ID')
+    def short_id(self, obj):
+        return str(obj.id)[:8]
+
+    @admin.display(description='Booking')
+    def booking_link(self, obj):
+        return format_html(
+            '<a href="{}">{}</a>',
+            f'/admin/bookings/booking/{obj.booking_id}/change/',
+            str(obj.booking_id)[:8],
+        )

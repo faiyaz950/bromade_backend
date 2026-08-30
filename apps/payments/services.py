@@ -41,12 +41,7 @@ class CashPaymentService:
             payload={'mode': 'cash'},
         )
 
-        previous_status = booking.status
-        booking.status = Booking.Status.CONFIRMED
-        booking.save(update_fields=['status', 'updated_at'])
-        booking.status_logs.create(
-            from_status=previous_status,
-            to_status=Booking.Status.CONFIRMED,
+        booking.start_visit_tracking(
             note='Cash booking confirmed; customer will pay the partner after service.',
         )
 
