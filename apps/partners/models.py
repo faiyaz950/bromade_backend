@@ -58,13 +58,7 @@ class PartnerProfile(UUIDModel):
             return False
         if not self.cities.exists() or not self.services.exists():
             return False
-        has_upi = bool((self.upi_id or '').strip() or (self.upi_phone or '').strip())
-        has_bank = bool(
-            (self.bank_account_holder or '').strip()
-            and (self.bank_account_number or '').strip()
-            and (self.bank_ifsc or '').strip()
-        )
-        return has_upi or has_bank
+        return True
 
 
 class PartnerCity(UUIDModel):

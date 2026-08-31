@@ -276,13 +276,15 @@ class PartnerAssignmentTests(APITestCase):
                 'full_name': 'Harsh Kumar',
                 'address_line': '14 MG Road',
                 'pincode': '400076',
-                'aadhaar_number': '234567890123',
+                'aadhaar_number': '2345 6789 0123',
                 'city_ids': [city_id],
                 'service_ids': [service_id],
             },
             format='json',
         )
-        self.assertEqual(missing_payout.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(missing_payout.status_code, status.HTTP_200_OK, missing_payout.data)
+        self.assertTrue(missing_payout.data['registration_complete'])
+        self.assertEqual(missing_payout.data['upi_id'], '')
 
         registered = self.client.put(
             '/api/v1/partner/me/register/',

@@ -112,19 +112,35 @@ class PartnerAvailabilitySerializer(serializers.ModelSerializer):
 
 class PartnerRegistrationSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=150)
-    email = serializers.EmailField(required=False, allow_blank=True)
+    email = serializers.CharField(required=False, allow_blank=True, max_length=254)
     address_line = serializers.CharField(max_length=255)
-    pincode = serializers.CharField(max_length=6)
-    years_experience = serializers.IntegerField(required=False, min_value=0, max_value=50, default=0)
-    aadhaar_number = serializers.CharField(required=False, allow_blank=True, max_length=12)
-    pan_number = serializers.CharField(required=False, allow_blank=True, max_length=10)
+    pincode = serializers.CharField(max_length=10)
+    years_experience = serializers.IntegerField(required=False, default=0)
+    aadhaar_number = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    pan_number = serializers.CharField(required=False, allow_blank=True, max_length=16)
     upi_id = serializers.CharField(required=False, allow_blank=True, max_length=100)
-    upi_phone = serializers.CharField(required=False, allow_blank=True, max_length=10)
+    upi_phone = serializers.CharField(required=False, allow_blank=True, max_length=15)
     bank_account_holder = serializers.CharField(required=False, allow_blank=True, max_length=150)
     bank_account_number = serializers.CharField(required=False, allow_blank=True, max_length=20)
-    bank_ifsc = serializers.CharField(required=False, allow_blank=True, max_length=11)
+    bank_ifsc = serializers.CharField(required=False, allow_blank=True, max_length=15)
     city_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1)
     service_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1)
+
+    def validate_email(self, value):
+        email = (value or '').strip()
+        if not email:
+            return ''
+        try:
+            return serializers.EmailField().run_validation(email)
+        except serializers.ValidationError:
+            raise serializers.ValidationError('Enter a valid email, or leave it blank.')
+
+    def validate_years_experience(self, value):
+        try:
+            years = int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+        return max(0, min(years, 50))
 
     def validate_pincode(self, value):
         digits = _digits(value)
@@ -141,35 +157,27 @@ class PartnerRegistrationSerializer(serializers.Serializer):
         return digits
 
     def validate_pan_number(self, value):
-        pan = (value or '').strip().upper()
-        if not pan:
-            return ''
+        pan = (value or '').strip().upper().replace(' ', '')
         if len(pan) != 10:
-            raise serializers.ValidationError('Enter a valid 10-character PAN.')
+            return ''
         return pan
 
     def validate_upi_phone(self, value):
-        if not value:
-            return ''
         digits = _digits(value)
         if len(digits) != 10:
-            raise serializers.ValidationError('Enter a 10-digit UPI mobile number.')
+            return ''
         return digits
 
     def validate_upi_id(self, value):
         upi = (value or '').strip().lower()
-        if not upi:
+        if not upi or '@' not in upi:
             return ''
-        if '@' not in upi:
-            raise serializers.ValidationError('Enter a valid UPI ID, like name@oksbi.')
         return upi
 
     def validate_bank_ifsc(self, value):
-        ifsc = (value or '').strip().upper()
-        if not ifsc:
-            return ''
+        ifsc = (value or '').strip().upper().replace(' ', '')
         if len(ifsc) != 11:
-            raise serializers.ValidationError('Enter an 11-character IFSC code.')
+            return ''
         return ifsc
 
     def validate_city_ids(self, value):
@@ -190,18 +198,6 @@ class PartnerRegistrationSerializer(serializers.Serializer):
         if len(_digits(aadhaar)) != 12:
             raise serializers.ValidationError({'aadhaar_number': 'Enter a 12-digit Aadhaar number.'})
         attrs['aadhaar_number'] = _digits(aadhaar)
-
-        upi_id = attrs.get('upi_id') or partner.upi_id
-        upi_phone = attrs.get('upi_phone') or partner.upi_phone
-        holder = attrs.get('bank_account_holder') or partner.bank_account_holder
-        account = attrs.get('bank_account_number') or partner.bank_account_number
-        ifsc = attrs.get('bank_ifsc') or partner.bank_ifsc
-        has_upi = bool((upi_id or '').strip() or (upi_phone or '').strip())
-        has_bank = bool((holder or '').strip() and (account or '').strip() and (ifsc or '').strip())
-        if not has_upi and not has_bank:
-            raise serializers.ValidationError(
-                {'upi_id': 'Add a UPI ID, UPI mobile number, or complete bank account details.'}
-            )
         return attrs
 
     def save(self, **kwargs):
