@@ -71,6 +71,15 @@ class BookingConfirmView(generics.GenericAPIView):
 
         if booking.status != Booking.Status.CONFIRMED:
             booking.start_visit_tracking(note='Booking confirmed.')
+        from apps.partners.assignment_service import AssignmentService
+
+        AssignmentService.auto_assign_booking(booking)
+        booking = (
+            Booking.objects.filter(pk=booking.pk)
+            .prefetch_related('items', 'payments', 'assignments__partner')
+            .select_related('rating')
+            .get()
+        )
         return response.Response(BookingSerializer(booking).data)
 
 

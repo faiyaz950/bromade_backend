@@ -8,6 +8,7 @@ from apps.accounts.models import User
 from apps.bookings.models import Booking, BookingAssignment, BookingRating
 from apps.catalog.models import Category, CityPackagePrice, Service, ServicePackage
 from apps.locations.models import Address, City
+from apps.partners.assignment_service import AssignmentService
 from apps.partners.models import PartnerCity, PartnerProfile, PartnerService, PartnerUnavailableDate
 from apps.payments.models import Payment
 
@@ -144,6 +145,37 @@ class PartnerAssignmentTests(APITestCase):
         self.assertEqual(customer_view.status_code, status.HTTP_200_OK)
         self.assertEqual(customer_view.data['assignment_status'], 'pending')
         self.assertEqual(customer_view.data['partner_name'], '')
+
+    def test_auto_assign_is_idempotent_and_covers_already_confirmed_bookings(self):
+        self.client.force_authenticate(user=self.customer)
+        booking_response = self.client.post(
+            '/api/v1/bookings/create/',
+            {
+                'package_id': str(self.package.id),
+                'address_id': str(self.address.id),
+                'scheduled_date': (timezone.localdate() + timedelta(days=1)).isoformat(),
+                'scheduled_time': '10:30:00',
+                'quantity': 1,
+            },
+            format='json',
+        )
+        booking = Booking.objects.get(pk=booking_response.data['id'])
+        booking.start_visit_tracking(note='Confirmed without payment callback.')
+        self.assertEqual(booking.assignment_status, Booking.AssignmentStatus.UNASSIGNED)
+
+        first = AssignmentService.auto_assign_booking(booking)
+        second = AssignmentService.auto_assign_booking(booking)
+        booking.refresh_from_db()
+        self.assertIsNotNone(first)
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(booking.assignment_status, Booking.AssignmentStatus.PENDING)
+        self.assertEqual(booking.assignments.count(), 1)
+
+        self.client.force_authenticate(user=first.partner.user)
+        jobs = self.client.get('/api/v1/partner/jobs/')
+        self.assertEqual(jobs.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(jobs.data), 1)
+        self.assertEqual(jobs.data[0]['id'], str(booking.id))
 
     def test_partner_can_list_and_accept_job(self):
         booking_id = self._create_and_pay_booking()

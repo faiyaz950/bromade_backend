@@ -5,7 +5,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 
 from apps.accounts.models import User
-from apps.bookings.models import Booking, BookingItem, BookingStatusLog
+from apps.bookings.models import Booking, BookingAssignment, BookingItem, BookingStatusLog
 from apps.catalog.models import (
     Category,
     CityPackagePrice,
@@ -241,9 +241,12 @@ class Command(BaseCommand):
             self._seed_home_slides()
             self._seed_coupons()
             self._ensure_demo_partners()
+            assigned = self._assign_unassigned_bookings()
             self.stdout.write(self.style.WARNING(
                 'Catalog already present; skipping catalog re-seed. Use --force to re-seed.'
             ))
+            if assigned:
+                self.stdout.write(self.style.SUCCESS(f'Assigned {assigned} confirmed booking(s) to demo partners.'))
             return
 
         cities = self._seed_cities()
@@ -251,8 +254,11 @@ class Command(BaseCommand):
         self._seed_home_slides()
         self._seed_coupons()
         demo_user, addresses = self._seed_demo_customer(cities[0])
-        self._seed_demo_partners(cities[0], packages)
+        self._seed_demo_partners(list(City.objects.filter(is_active=True)), list(Service.objects.filter(is_active=True)))
         self._seed_demo_bookings(demo_user, addresses[0], packages)
+        assigned = self._assign_unassigned_bookings()
+        if assigned:
+            self.stdout.write(self.style.SUCCESS(f'Assigned {assigned} confirmed booking(s) to demo partners.'))
 
         self.stdout.write(self.style.SUCCESS('Example app data with images seeded successfully.'))
         self.stdout.write(self.style.WARNING('Demo customer phone for OTP login: +919876543210'))
@@ -545,29 +551,21 @@ class Command(BaseCommand):
         return user, [home, office]
 
     def _ensure_demo_partners(self):
-        city = City.objects.filter(is_active=True).first()
-        if city is None:
+        cities = list(City.objects.filter(is_active=True))
+        if not cities:
             self.stdout.write(self.style.WARNING('No city found; skipping demo partners.'))
             return
-        packages = list(ServicePackage.objects.select_related('service'))
-        self._seed_demo_partners(city, packages)
+        services = list(Service.objects.filter(is_active=True))
+        self._seed_demo_partners(cities, services)
 
-    def _seed_demo_partners(self, city, packages):
-        bathroom = next((p for p in packages if 'Bathroom' in p.service.name), None)
-        ac = next((p for p in packages if 'Split AC' in p.name), None)
-        services = []
-        if bathroom is not None:
-            services.append(bathroom.service)
-        if ac is not None and ac.service not in services:
-            services.append(ac.service)
-        if not services:
-            services = list({package.service for package in packages[:2]})
-
+    def _seed_demo_partners(self, cities, services):
+        if not cities:
+            return
         partner_defs = [
-            ('+919888888801', 'Ravi Kumar', services),
-            ('+919888888802', 'Anita Desai', services),
+            ('+919888888801', 'Ravi Kumar'),
+            ('+919888888802', 'Anita Desai'),
         ]
-        for phone, name, services in partner_defs:
+        for phone, name in partner_defs:
             user, created = User.objects.get_or_create(
                 phone_number=phone,
                 defaults={'first_name': name.split()[0], 'last_name': name.split()[-1], 'is_active': True},
@@ -585,9 +583,31 @@ class Command(BaseCommand):
                     'approval_status': PartnerProfile.ApprovalStatus.APPROVED,
                 },
             )
-            PartnerCity.objects.get_or_create(partner=profile, city=city)
+            for city in cities:
+                PartnerCity.objects.get_or_create(partner=profile, city=city)
             for service in services:
                 PartnerService.objects.get_or_create(partner=profile, service=service)
+
+    def _assign_unassigned_bookings(self):
+        from apps.partners.assignment_service import AssignmentService
+
+        assigned = 0
+        bookings = Booking.objects.filter(status=Booking.Status.CONFIRMED).exclude(
+            assignment_status=Booking.AssignmentStatus.ACCEPTED,
+        )
+        for booking in bookings:
+            has_open = BookingAssignment.objects.filter(
+                booking=booking,
+                status__in=[
+                    BookingAssignment.Status.PENDING,
+                    BookingAssignment.Status.ACCEPTED,
+                ],
+            ).exists()
+            if has_open:
+                continue
+            if AssignmentService.auto_assign_booking(booking) is not None:
+                assigned += 1
+        return assigned
 
     def _seed_demo_bookings(self, user, address, packages):
         if not packages:

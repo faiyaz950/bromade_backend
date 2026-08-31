@@ -14,6 +14,20 @@ class AssignmentService:
         if booking.status != Booking.Status.CONFIRMED:
             return None
 
+        open_assignment = (
+            BookingAssignment.objects.filter(
+                booking=booking,
+                status__in=[
+                    BookingAssignment.Status.PENDING,
+                    BookingAssignment.Status.ACCEPTED,
+                ],
+            )
+            .order_by('-assigned_at')
+            .first()
+        )
+        if open_assignment is not None:
+            return open_assignment
+
         package = booking.items.select_related('package__service').first()
         if package is None:
             return None
