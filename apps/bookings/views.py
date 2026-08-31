@@ -36,21 +36,34 @@ class BookingListView(generics.ListAPIView):
     serializer_class = BookingSerializer
 
     def get_queryset(self):
-        return Booking.objects.filter(customer=self.request.user).prefetch_related('items', 'payments').select_related('rating')
+        return (
+            Booking.objects.filter(customer=self.request.user)
+            .prefetch_related('items', 'payments', 'assignments__partner')
+            .select_related('rating')
+        )
 
 
 class BookingDetailView(generics.RetrieveAPIView):
     serializer_class = BookingSerializer
 
     def get_queryset(self):
-        return Booking.objects.filter(customer=self.request.user).prefetch_related('items', 'payments').select_related('rating')
+        return (
+            Booking.objects.filter(customer=self.request.user)
+            .prefetch_related('items', 'payments', 'assignments__partner')
+            .select_related('rating')
+        )
 
 
 class BookingConfirmView(generics.GenericAPIView):
     """Mark a pending booking as confirmed after successful payment orchestration."""
 
     def post(self, request, pk):
-        booking = Booking.objects.filter(customer=request.user, pk=pk).prefetch_related('items').first()
+        booking = (
+            Booking.objects.filter(customer=request.user, pk=pk)
+            .prefetch_related('items', 'payments', 'assignments__partner')
+            .select_related('rating')
+            .first()
+        )
         if booking is None:
             return response.Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         if booking.status not in {Booking.Status.DRAFT, Booking.Status.PENDING_PAYMENT, Booking.Status.CONFIRMED}:
@@ -85,7 +98,7 @@ class BookingRateView(generics.GenericAPIView):
         )
         booking = (
             Booking.objects.filter(pk=booking.pk)
-            .prefetch_related('items', 'payments')
+            .prefetch_related('items', 'payments', 'assignments__partner')
             .select_related('rating')
             .get()
         )

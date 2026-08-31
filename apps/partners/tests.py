@@ -139,6 +139,12 @@ class PartnerAssignmentTests(APITestCase):
         self.assertEqual(booking.assignment_status, Booking.AssignmentStatus.PENDING)
         self.assertEqual(booking.assignments.filter(status=BookingAssignment.Status.PENDING).count(), 1)
 
+        self.client.force_authenticate(user=self.customer)
+        customer_view = self.client.get(f'/api/v1/bookings/{booking_id}/')
+        self.assertEqual(customer_view.status_code, status.HTTP_200_OK)
+        self.assertEqual(customer_view.data['assignment_status'], 'pending')
+        self.assertEqual(customer_view.data['partner_name'], '')
+
     def test_partner_can_list_and_accept_job(self):
         booking_id = self._create_and_pay_booking()
         assignment = BookingAssignment.objects.get(booking_id=booking_id)
@@ -156,6 +162,13 @@ class PartnerAssignmentTests(APITestCase):
         assignment.refresh_from_db()
         self.assertEqual(assignment.status, BookingAssignment.Status.ACCEPTED)
         self.assertEqual(booking.assignment_status, Booking.AssignmentStatus.ACCEPTED)
+
+        self.client.force_authenticate(user=self.customer)
+        customer_view = self.client.get(f'/api/v1/bookings/{booking_id}/')
+        self.assertEqual(customer_view.status_code, status.HTTP_200_OK)
+        self.assertEqual(customer_view.data['assignment_status'], 'accepted')
+        self.assertEqual(customer_view.data['partner_name'], assignment.partner.full_name)
+        self.assertEqual(customer_view.data['visit_status'], 'scheduled')
 
     def test_partner_reject_triggers_reassignment(self):
         booking_id = self._create_and_pay_booking()
@@ -187,6 +200,19 @@ class PartnerAssignmentTests(APITestCase):
         self.client.force_authenticate(user=self.customer)
         response = self.client.get('/api/v1/partner/jobs/')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_partner_me_enrolls_authenticated_user_as_pending(self):
+        self.client.force_authenticate(user=self.customer)
+        self.assertFalse(PartnerProfile.objects.filter(user=self.customer).exists())
+        me = self.client.get('/api/v1/partner/me/')
+        self.assertEqual(me.status_code, status.HTTP_200_OK)
+        self.assertEqual(me.data['approval_status'], 'pending')
+        self.assertFalse(me.data['is_active'])
+        jobs = self.client.get('/api/v1/partner/jobs/')
+        self.assertEqual(jobs.status_code, status.HTTP_403_FORBIDDEN)
+        again = self.client.get('/api/v1/partner/me/')
+        self.assertEqual(again.status_code, status.HTTP_200_OK)
+        self.assertEqual(again.data['id'], me.data['id'])
 
     def test_pending_partner_can_load_profile_but_not_jobs(self):
         pending_user = User.objects.create_user(phone_number='+919888888803')

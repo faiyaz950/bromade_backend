@@ -7,7 +7,7 @@ from apps.catalog.models import CityPackagePrice, ServicePackage
 from apps.coupons.services import CouponService, CouponValidationError
 from apps.locations.models import Address
 
-from .models import Booking, BookingItem
+from .models import Booking, BookingAssignment, BookingItem
 
 
 class BookingDraftSerializer(serializers.Serializer):
@@ -59,6 +59,7 @@ class BookingSerializer(serializers.ModelSerializer):
     payment_method = serializers.SerializerMethodField()
     rating_stars = serializers.SerializerMethodField()
     rating_comment = serializers.SerializerMethodField()
+    partner_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -68,6 +69,8 @@ class BookingSerializer(serializers.ModelSerializer):
             'scheduled_time',
             'status',
             'visit_status',
+            'assignment_status',
+            'partner_name',
             'subtotal_amount',
             'discount_amount',
             'total_amount',
@@ -80,6 +83,10 @@ class BookingSerializer(serializers.ModelSerializer):
             'created_at',
         )
 
+    def _accepted_assignment(self, obj):
+        assignments = list(obj.assignments.all())
+        return next((a for a in assignments if a.status == BookingAssignment.Status.ACCEPTED), None)
+
     def get_payment_method(self, obj):
         latest_payment = max(obj.payments.all(), default=None, key=lambda p: p.created_at)
         return latest_payment.method if latest_payment else None
@@ -91,6 +98,12 @@ class BookingSerializer(serializers.ModelSerializer):
     def get_rating_comment(self, obj):
         rating = getattr(obj, 'rating', None)
         return rating.comment if rating else ''
+
+    def get_partner_name(self, obj):
+        assignment = self._accepted_assignment(obj)
+        if assignment is None:
+            return ''
+        return assignment.partner.full_name or 'Bayti professional'
 
 
 class BookingRatingSerializer(serializers.Serializer):

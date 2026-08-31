@@ -1,14 +1,16 @@
 from datetime import timedelta
 
+from django.db import IntegrityError
 from django.db.models import Sum
 from django.utils import timezone
-from rest_framework import generics, response, status
+from rest_framework import generics, permissions, response, status
 
 from apps.bookings.models import Booking, BookingAssignment
 from apps.payments.models import Payment
 
 from .assignment_service import AssignmentService
-from .permissions import IsApprovedPartner, IsPartnerAccount
+from .models import PartnerProfile
+from .permissions import IsApprovedPartner
 from .serializers import (
     PartnerAvailabilitySerializer,
     PartnerDeviceTokenSerializer,
@@ -19,6 +21,22 @@ from .serializers import (
     PartnerVisitActionSerializer,
 )
 from .visit_service import VisitService
+
+
+def ensure_partner_profile(user):
+    existing = getattr(user, 'partner_profile', None)
+    if existing is not None:
+        return existing
+    full_name = f'{user.first_name} {user.last_name}'.strip() or (user.phone_number or 'Partner')
+    try:
+        return PartnerProfile.objects.create(
+            user=user,
+            full_name=full_name,
+            is_active=False,
+            approval_status=PartnerProfile.ApprovalStatus.PENDING,
+        )
+    except IntegrityError:
+        return PartnerProfile.objects.get(user=user)
 
 
 def _job_payload(request, booking, assignment=None):
@@ -32,11 +50,11 @@ def _job_payload(request, booking, assignment=None):
 
 
 class PartnerMeView(generics.RetrieveUpdateAPIView):
-    permission_classes = [IsPartnerAccount]
+    permission_classes = [permissions.IsAuthenticated]
     serializer_class = PartnerProfileSerializer
 
     def get_object(self):
-        return self.request.user.partner_profile
+        return ensure_partner_profile(self.request.user)
 
     def get_serializer_class(self):
         if self.request.method in {'PUT', 'PATCH'}:
@@ -53,13 +71,14 @@ class PartnerMeView(generics.RetrieveUpdateAPIView):
 
 
 class PartnerDeviceTokenView(generics.GenericAPIView):
-    permission_classes = [IsPartnerAccount]
+    permission_classes = [permissions.IsAuthenticated]
     serializer_class = PartnerDeviceTokenSerializer
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        token, _created = request.user.partner_profile.device_tokens.update_or_create(
+        profile = ensure_partner_profile(request.user)
+        token, _created = profile.device_tokens.update_or_create(
             token=serializer.validated_data['token'],
             defaults={'platform': serializer.validated_data.get('platform', 'android')},
         )

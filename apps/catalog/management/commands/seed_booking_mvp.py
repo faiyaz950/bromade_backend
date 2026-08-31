@@ -240,8 +240,9 @@ class Command(BaseCommand):
         if Category.objects.exists() and not options['force']:
             self._seed_home_slides()
             self._seed_coupons()
+            self._ensure_demo_partners()
             self.stdout.write(self.style.WARNING(
-                'Catalog already present; skipping seed. Use --force to re-seed.'
+                'Catalog already present; skipping catalog re-seed. Use --force to re-seed.'
             ))
             return
 
@@ -394,7 +395,7 @@ class Command(BaseCommand):
                         service=service,
                         name=package_name,
                         defaults={
-                            'description': f'{package_name}: professional {service_name.lower()} by Brolytics.',
+                            'description': f'{package_name}: professional {service_name.lower()} by Bayti.',
                             'image_url': image_url,
                             'base_price': Decimal(base_price),
                             'discounted_price': Decimal(discounted_price),
@@ -532,7 +533,7 @@ class Command(BaseCommand):
                 'city': city,
                 'contact_name': 'Priya Sharma',
                 'contact_phone': '+919876543210',
-                'line1': 'Brolytics Hub, 4th Floor',
+                'line1': 'Bayti Hub, 4th Floor',
                 'line2': 'Indiranagar 100 Feet Road',
                 'landmark': 'Opposite metro station',
                 'pincode': '560038',
@@ -543,15 +544,28 @@ class Command(BaseCommand):
         )
         return user, [home, office]
 
+    def _ensure_demo_partners(self):
+        city = City.objects.filter(is_active=True).first()
+        if city is None:
+            self.stdout.write(self.style.WARNING('No city found; skipping demo partners.'))
+            return
+        packages = list(ServicePackage.objects.select_related('service'))
+        self._seed_demo_partners(city, packages)
+
     def _seed_demo_partners(self, city, packages):
         bathroom = next((p for p in packages if 'Bathroom' in p.service.name), None)
         ac = next((p for p in packages if 'Split AC' in p.name), None)
-        if bathroom is None or ac is None:
-            return
+        services = []
+        if bathroom is not None:
+            services.append(bathroom.service)
+        if ac is not None and ac.service not in services:
+            services.append(ac.service)
+        if not services:
+            services = list({package.service for package in packages[:2]})
 
         partner_defs = [
-            ('+919888888801', 'Ravi Kumar', [bathroom.service, ac.service]),
-            ('+919888888802', 'Anita Desai', [bathroom.service, ac.service]),
+            ('+919888888801', 'Ravi Kumar', services),
+            ('+919888888802', 'Anita Desai', services),
         ]
         for phone, name, services in partner_defs:
             user, created = User.objects.get_or_create(
