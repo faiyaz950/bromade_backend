@@ -60,6 +60,7 @@ class PartnerProfileSerializer(serializers.ModelSerializer):
             'service_ids',
             'average_rating',
             'rating_count',
+            'wallet_balance',
         )
         read_only_fields = fields
 
@@ -273,6 +274,9 @@ class PartnerJobSerializer(serializers.ModelSerializer):
     cash_collected = serializers.SerializerMethodField()
     rating_stars = serializers.SerializerMethodField()
     rating_comment = serializers.SerializerMethodField()
+    commission_amount = serializers.SerializerMethodField()
+    can_accept = serializers.SerializerMethodField()
+    low_wallet_balance = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -299,6 +303,9 @@ class PartnerJobSerializer(serializers.ModelSerializer):
             'city_name',
             'rating_stars',
             'rating_comment',
+            'commission_amount',
+            'can_accept',
+            'low_wallet_balance',
             'items',
             'created_at',
         )
@@ -361,6 +368,31 @@ class PartnerJobSerializer(serializers.ModelSerializer):
     def get_rating_comment(self, obj):
         rating = getattr(obj, 'rating', None)
         return rating.comment if rating else ''
+
+    def get_commission_amount(self, obj):
+        from apps.partners.wallet_service import commission_amount
+
+        return commission_amount(obj.total_amount)
+
+    def _wallet_covers_commission(self, obj):
+        partner = self.context.get('partner')
+        if partner is None:
+            return False
+        from apps.partners.wallet_service import commission_amount, money
+
+        return money(partner.wallet_balance) >= commission_amount(obj.total_amount)
+
+    def get_can_accept(self, obj):
+        assignment = self._assignment(obj)
+        if assignment is None or assignment.status != BookingAssignment.Status.PENDING:
+            return False
+        return self._wallet_covers_commission(obj)
+
+    def get_low_wallet_balance(self, obj):
+        assignment = self._assignment(obj)
+        if assignment is None or assignment.status != BookingAssignment.Status.PENDING:
+            return False
+        return not self._wallet_covers_commission(obj)
 
 
 class PartnerJobRejectSerializer(serializers.Serializer):

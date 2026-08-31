@@ -595,6 +595,16 @@ class Command(BaseCommand):
                 PartnerCity.objects.get_or_create(partner=profile, city=city)
             for service in services:
                 PartnerService.objects.get_or_create(partner=profile, service=service)
+            if not profile.wallet_transactions.exists():
+                from decimal import Decimal
+
+                from apps.partners.wallet_service import WalletService
+
+                WalletService.credit(
+                    partner=profile,
+                    amount=Decimal('5000.00'),
+                    note='Demo opening wallet so jobs can be accepted',
+                )
 
     def _assign_unassigned_bookings(self):
         from apps.partners.assignment_service import AssignmentService

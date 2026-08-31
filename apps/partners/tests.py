@@ -46,12 +46,14 @@ class PartnerAssignmentTests(APITestCase):
             full_name='Ravi Kumar',
             is_active=True,
             approval_status=PartnerProfile.ApprovalStatus.APPROVED,
+            wallet_balance=10000,
         )
         self.partner_2 = PartnerProfile.objects.create(
             user=self.partner_user_2,
             full_name='Anita Desai',
             is_active=True,
             approval_status=PartnerProfile.ApprovalStatus.APPROVED,
+            wallet_balance=10000,
         )
         PartnerCity.objects.create(partner=self.partner, city=self.city)
         PartnerCity.objects.create(partner=self.partner_2, city=self.city)
@@ -200,6 +202,7 @@ class PartnerAssignmentTests(APITestCase):
         self.assertEqual(customer_view.status_code, status.HTTP_200_OK)
         self.assertEqual(customer_view.data['assignment_status'], 'accepted')
         self.assertEqual(customer_view.data['partner_name'], assignment.partner.full_name)
+        self.assertEqual(customer_view.data['partner_phone'], self.partner_user.phone_number)
         self.assertEqual(customer_view.data['visit_status'], 'scheduled')
 
     def test_partner_reject_triggers_reassignment(self):
@@ -436,3 +439,49 @@ class PartnerAssignmentTests(APITestCase):
         self.assertEqual(assignment.rejection_reason, 'Too far')
         rejected_jobs = self.client.get('/api/v1/partner/jobs/', {'status': 'rejected'})
         self.assertEqual(len(rejected_jobs.data), 1)
+
+    def test_accept_debits_thirty_percent_from_wallet(self):
+        from apps.partners.wallet_service import commission_amount
+        from apps.partners.models import WalletTransaction
+
+        booking_id = self._create_and_pay_booking()
+        booking = Booking.objects.get(pk=booking_id)
+        assignment = BookingAssignment.objects.get(booking_id=booking_id)
+        needed = commission_amount(booking.total_amount)
+        before = self.partner.wallet_balance
+
+        self.client.force_authenticate(user=self.partner_user)
+        accept_response = self.client.post(f'/api/v1/partner/jobs/assignments/{assignment.id}/accept/')
+        self.assertEqual(accept_response.status_code, status.HTTP_200_OK)
+
+        self.partner.refresh_from_db()
+        self.assertEqual(self.partner.wallet_balance, before - needed)
+        debit = WalletTransaction.objects.get(
+            partner=self.partner,
+            entry_type=WalletTransaction.EntryType.DEBIT,
+            booking=booking,
+        )
+        self.assertEqual(debit.amount, needed)
+
+    def test_low_wallet_blocks_accept(self):
+        self.partner.wallet_balance = 0
+        self.partner.save(update_fields=['wallet_balance', 'updated_at'])
+
+        booking_id = self._create_and_pay_booking()
+        assignment = BookingAssignment.objects.get(booking_id=booking_id)
+
+        self.client.force_authenticate(user=self.partner_user)
+        jobs = self.client.get('/api/v1/partner/jobs/')
+        self.assertEqual(jobs.status_code, status.HTTP_200_OK)
+        self.assertTrue(jobs.data[0]['low_wallet_balance'])
+        self.assertFalse(jobs.data[0]['can_accept'])
+
+        accept_response = self.client.post(f'/api/v1/partner/jobs/assignments/{assignment.id}/accept/')
+        self.assertEqual(accept_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(accept_response.data['code'], 'low_wallet_balance')
+        self.assertIn('Low wallet balance', accept_response.data['detail'])
+
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, BookingAssignment.Status.PENDING)
+        self.partner.refresh_from_db()
+        self.assertEqual(self.partner.wallet_balance, 0)

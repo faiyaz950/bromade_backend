@@ -60,6 +60,7 @@ class BookingSerializer(serializers.ModelSerializer):
     rating_stars = serializers.SerializerMethodField()
     rating_comment = serializers.SerializerMethodField()
     partner_name = serializers.SerializerMethodField()
+    partner_phone = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -71,6 +72,7 @@ class BookingSerializer(serializers.ModelSerializer):
             'visit_status',
             'assignment_status',
             'partner_name',
+            'partner_phone',
             'subtotal_amount',
             'discount_amount',
             'total_amount',
@@ -104,6 +106,12 @@ class BookingSerializer(serializers.ModelSerializer):
         if assignment is None:
             return ''
         return assignment.partner.full_name or 'Bayti professional'
+
+    def get_partner_phone(self, obj):
+        assignment = self._accepted_assignment(obj)
+        if assignment is None:
+            return ''
+        return assignment.partner.user.phone_number or ''
 
 
 class BookingRatingSerializer(serializers.Serializer):

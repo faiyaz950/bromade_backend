@@ -38,7 +38,7 @@ class BookingListView(generics.ListAPIView):
     def get_queryset(self):
         return (
             Booking.objects.filter(customer=self.request.user)
-            .prefetch_related('items', 'payments', 'assignments__partner')
+            .prefetch_related('items', 'payments', 'assignments__partner__user')
             .select_related('rating')
         )
 
@@ -49,7 +49,7 @@ class BookingDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         return (
             Booking.objects.filter(customer=self.request.user)
-            .prefetch_related('items', 'payments', 'assignments__partner')
+            .prefetch_related('items', 'payments', 'assignments__partner__user')
             .select_related('rating')
         )
 

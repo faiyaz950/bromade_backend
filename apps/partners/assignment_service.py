@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 
@@ -98,26 +99,30 @@ class AssignmentService:
 
     @staticmethod
     def accept_assignment(*, partner, assignment_id: str) -> BookingAssignment:
-        assignment = BookingAssignment.objects.select_related('booking').get(
-            pk=assignment_id,
-            partner=partner,
-            status=BookingAssignment.Status.PENDING,
-        )
-        booking = assignment.booking
-        assignment.status = BookingAssignment.Status.ACCEPTED
-        assignment.responded_at = timezone.now()
-        assignment.save(update_fields=['status', 'responded_at', 'updated_at'])
+        from apps.partners.wallet_service import WalletService
 
-        previous = booking.assignment_status
-        booking.assignment_status = Booking.AssignmentStatus.ACCEPTED
-        booking.save(update_fields=['assignment_status', 'updated_at'])
-        BookingStatusLog.objects.create(
-            booking=booking,
-            from_status=previous,
-            to_status=Booking.AssignmentStatus.ACCEPTED,
-            note=f'Accepted by partner {partner.full_name}.',
-        )
-        return assignment
+        with transaction.atomic():
+            assignment = BookingAssignment.objects.select_related('booking').select_for_update().get(
+                pk=assignment_id,
+                partner=partner,
+                status=BookingAssignment.Status.PENDING,
+            )
+            booking = assignment.booking
+            WalletService.debit_commission(partner=partner, booking=booking)
+            assignment.status = BookingAssignment.Status.ACCEPTED
+            assignment.responded_at = timezone.now()
+            assignment.save(update_fields=['status', 'responded_at', 'updated_at'])
+
+            previous = booking.assignment_status
+            booking.assignment_status = Booking.AssignmentStatus.ACCEPTED
+            booking.save(update_fields=['assignment_status', 'updated_at'])
+            BookingStatusLog.objects.create(
+                booking=booking,
+                from_status=previous,
+                to_status=Booking.AssignmentStatus.ACCEPTED,
+                note=f'Accepted by partner {partner.full_name}.',
+            )
+            return assignment
 
     @staticmethod
     def reject_assignment(*, partner, assignment_id: str, reason: str = '') -> Optional[BookingAssignment]:

@@ -31,6 +31,7 @@ class PartnerProfile(UUIDModel):
     bank_ifsc = models.CharField(max_length=11, blank=True)
     is_active = models.BooleanField(default=False)
     is_available_for_assignment = models.BooleanField(default=True)
+    wallet_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     approval_status = models.CharField(
         max_length=20,
         choices=ApprovalStatus.choices,
@@ -109,3 +110,35 @@ class PartnerUnavailableDate(UUIDModel):
 
     def __str__(self):
         return f'{self.partner.full_name} · {self.date}'
+
+
+class WalletTransaction(UUIDModel):
+    class EntryType(models.TextChoices):
+        CREDIT = 'credit', 'Credit'
+        DEBIT = 'debit', 'Debit'
+
+    partner = models.ForeignKey(PartnerProfile, on_delete=models.CASCADE, related_name='wallet_transactions')
+    entry_type = models.CharField(max_length=10, choices=EntryType.choices)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2)
+    note = models.CharField(max_length=255, blank=True)
+    booking = models.ForeignKey(
+        'bookings.Booking',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='wallet_transactions',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='partner_wallet_credits',
+    )
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.partner} · {self.entry_type} · {self.amount}'

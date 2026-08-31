@@ -1,3 +1,4 @@
+from django import forms
 from django.contrib import admin, messages
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -5,7 +6,29 @@ from django.utils.html import format_html
 
 from apps.bookings.models import BookingAssignment
 
-from .models import PartnerCity, PartnerProfile, PartnerService, PartnerUnavailableDate
+from .models import PartnerCity, PartnerProfile, PartnerService, PartnerUnavailableDate, WalletTransaction
+from .wallet_service import WalletService
+
+
+class PartnerWalletCreditForm(forms.ModelForm):
+    add_wallet_amount = forms.DecimalField(
+        required=False,
+        min_value=0,
+        max_digits=10,
+        decimal_places=2,
+        label='Add wallet amount',
+        help_text='Partner paid you this amount in real money. It is added to their wallet 1:1.',
+    )
+    wallet_note = forms.CharField(
+        required=False,
+        max_length=255,
+        label='Wallet note',
+        help_text='Optional. Example: UPI received 12 Mar.',
+    )
+
+    class Meta:
+        model = PartnerProfile
+        fields = '__all__'
 
 
 class PartnerCityInline(admin.TabularInline):
@@ -41,12 +64,29 @@ class PartnerUnavailableDateInline(admin.TabularInline):
     fields = ('date', 'note')
 
 
+class WalletTransactionInline(admin.TabularInline):
+    model = WalletTransaction
+    extra = 0
+    can_delete = False
+    show_change_link = False
+    verbose_name = 'Wallet entry'
+    verbose_name_plural = 'Wallet history'
+    fields = ('created_at', 'entry_type', 'amount', 'balance_after', 'note', 'booking')
+    readonly_fields = fields
+    ordering = ('-created_at',)
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(PartnerProfile)
 class PartnerProfileAdmin(admin.ModelAdmin):
+    form = PartnerWalletCreditForm
     list_display = (
         'full_name',
         'phone_number',
         'approval_badge',
+        'wallet_balance',
         'is_active',
         'is_available_for_assignment',
         'city_summary',
@@ -57,9 +97,15 @@ class PartnerProfileAdmin(admin.ModelAdmin):
     )
     list_filter = ('approval_status', 'is_active', 'is_available_for_assignment', 'cities__city')
     search_fields = ('full_name', 'user__phone_number', 'user__first_name', 'user__last_name')
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at', 'wallet_balance')
     autocomplete_fields = ('user',)
-    inlines = [PartnerCityInline, PartnerServiceInline, PartnerUnavailableDateInline, PartnerAssignmentInline]
+    inlines = [
+        PartnerCityInline,
+        PartnerServiceInline,
+        PartnerUnavailableDateInline,
+        WalletTransactionInline,
+        PartnerAssignmentInline,
+    ]
     actions = ('approve_partners', 'reject_partners', 'activate_partners', 'deactivate_partners')
     fieldsets = (
         ('Partner', {'fields': ('user', 'full_name', 'email', 'approval_status', 'approval_note')}),
@@ -74,6 +120,13 @@ class PartnerProfileAdmin(admin.ModelAdmin):
                     'bank_account_number',
                     'bank_ifsc',
                 )
+            },
+        ),
+        (
+            'Wallet',
+            {
+                'fields': ('wallet_balance', 'add_wallet_amount', 'wallet_note'),
+                'description': 'Partner pays you real money. Add the same amount here. They need 30% of a job in this wallet to accept it.',
             },
         ),
         ('Operations', {'fields': ('is_active', 'is_available_for_assignment')}),
@@ -100,6 +153,19 @@ class PartnerProfileAdmin(admin.ModelAdmin):
             obj.is_active = False
             obj.is_available_for_assignment = False
         super().save_model(request, obj, form, change)
+        amount = form.cleaned_data.get('add_wallet_amount')
+        if amount:
+            WalletService.credit(
+                partner=obj,
+                amount=amount,
+                note=form.cleaned_data.get('wallet_note') or f'Admin credit by {request.user}',
+                created_by=request.user,
+            )
+            self.message_user(
+                request,
+                f'Added ₹{amount} to wallet. New balance ₹{obj.wallet_balance}.',
+                messages.SUCCESS,
+            )
 
     @admin.display(description='Phone', ordering='user__phone_number')
     def phone_number(self, obj):

@@ -10,6 +10,7 @@ from apps.payments.models import Payment
 
 from .assignment_service import AssignmentService
 from .models import PartnerProfile
+from .wallet_service import InsufficientWalletError
 from .permissions import IsApprovedPartner
 from .serializers import (
     PartnerAvailabilitySerializer,
@@ -284,7 +285,19 @@ class PartnerJobAcceptView(generics.GenericAPIView):
         if assignment is None:
             return response.Response({'detail': 'Assignment not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        AssignmentService.accept_assignment(partner=partner, assignment_id=str(assignment.id))
+        try:
+            AssignmentService.accept_assignment(partner=partner, assignment_id=str(assignment.id))
+        except InsufficientWalletError as exc:
+            return response.Response(
+                {
+                    'detail': str(exc),
+                    'code': 'low_wallet_balance',
+                    'wallet_balance': str(exc.wallet_balance),
+                    'required_amount': str(exc.required_amount),
+                    'shortfall': str(exc.shortfall),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         assignment.refresh_from_db()
         return response.Response(_job_payload(request, assignment.booking, assignment))
 
