@@ -17,6 +17,7 @@ from .serializers import (
     PartnerJobRejectSerializer,
     PartnerJobSerializer,
     PartnerProfileSerializer,
+    PartnerRegistrationSerializer,
     PartnerUnavailableDateSerializer,
     PartnerVisitActionSerializer,
 )
@@ -68,6 +69,39 @@ class PartnerMeView(generics.RetrieveUpdateAPIView):
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         return response.Response(PartnerProfileSerializer(instance).data)
+
+
+class PartnerRegisterView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = PartnerRegistrationSerializer
+
+    def put(self, request):
+        profile = ensure_partner_profile(request.user)
+        serializer = self.get_serializer(data=request.data, context={'partner': profile, 'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        profile.refresh_from_db()
+        return response.Response(PartnerProfileSerializer(profile).data)
+
+
+class PartnerCatalogView(generics.GenericAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from apps.catalog.models import Service
+        from apps.locations.models import City
+
+        cities = [
+            {'id': str(city.id), 'name': city.name, 'state': city.state}
+            for city in City.objects.filter(is_active=True).order_by('name')
+        ]
+        services = [
+            {'id': str(service.id), 'name': service.name, 'category': service.category.name}
+            for service in Service.objects.filter(is_active=True).select_related('category').order_by(
+                'category__name', 'name'
+            )
+        ]
+        return response.Response({'cities': cities, 'services': services})
 
 
 class PartnerDeviceTokenView(generics.GenericAPIView):

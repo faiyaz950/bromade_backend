@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     PartnerCashCollectView,
+    PartnerCatalogView,
     PartnerDeviceTokenView,
     PartnerEarningsView,
     PartnerJobAcceptView,
@@ -9,6 +10,7 @@ from .views import (
     PartnerJobListView,
     PartnerJobRejectView,
     PartnerMeView,
+    PartnerRegisterView,
     PartnerUnavailableDateDeleteView,
     PartnerUnavailableDateListView,
     PartnerVisitAdvanceView,
@@ -16,7 +18,9 @@ from .views import (
 
 urlpatterns = [
     path('me/', PartnerMeView.as_view(), name='partner-me'),
+    path('me/register/', PartnerRegisterView.as_view(), name='partner-register'),
     path('me/device-token/', PartnerDeviceTokenView.as_view(), name='partner-device-token'),
+    path('catalog/', PartnerCatalogView.as_view(), name='partner-catalog'),
     path('earnings/', PartnerEarningsView.as_view(), name='partner-earnings'),
     path('unavailable-dates/', PartnerUnavailableDateListView.as_view(), name='partner-unavailable-dates'),
     path(

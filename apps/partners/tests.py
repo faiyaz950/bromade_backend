@@ -245,6 +245,7 @@ class PartnerAssignmentTests(APITestCase):
         again = self.client.get('/api/v1/partner/me/')
         self.assertEqual(again.status_code, status.HTTP_200_OK)
         self.assertEqual(again.data['id'], me.data['id'])
+        self.assertFalse(me.data['registration_complete'])
 
     def test_pending_partner_can_load_profile_but_not_jobs(self):
         pending_user = User.objects.create_user(phone_number='+919888888803')
@@ -258,6 +259,55 @@ class PartnerAssignmentTests(APITestCase):
         me = self.client.get('/api/v1/partner/me/')
         self.assertEqual(me.status_code, status.HTTP_200_OK)
         self.assertEqual(me.data['approval_status'], 'pending')
+        self.assertFalse(me.data['registration_complete'])
+        jobs = self.client.get('/api/v1/partner/jobs/')
+        self.assertEqual(jobs.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_new_partner_can_submit_registration(self):
+        self.client.force_authenticate(user=self.customer)
+        self.client.get('/api/v1/partner/me/')
+        catalog = self.client.get('/api/v1/partner/catalog/')
+        self.assertEqual(catalog.status_code, status.HTTP_200_OK)
+        city_id = str(self.city.id)
+        service_id = str(self.service.id)
+        missing_payout = self.client.put(
+            '/api/v1/partner/me/register/',
+            {
+                'full_name': 'Harsh Kumar',
+                'address_line': '14 MG Road',
+                'pincode': '400076',
+                'aadhaar_number': '234567890123',
+                'city_ids': [city_id],
+                'service_ids': [service_id],
+            },
+            format='json',
+        )
+        self.assertEqual(missing_payout.status_code, status.HTTP_400_BAD_REQUEST)
+
+        registered = self.client.put(
+            '/api/v1/partner/me/register/',
+            {
+                'full_name': 'Harsh Kumar',
+                'email': 'harsh@bayti.in',
+                'address_line': '14 MG Road',
+                'pincode': '400076',
+                'years_experience': 3,
+                'aadhaar_number': '234567890123',
+                'pan_number': 'ABCDE1234F',
+                'upi_id': 'harsh@okaxis',
+                'upi_phone': '9876543210',
+                'city_ids': [city_id],
+                'service_ids': [service_id],
+            },
+            format='json',
+        )
+        self.assertEqual(registered.status_code, status.HTTP_200_OK, registered.data)
+        self.assertTrue(registered.data['registration_complete'])
+        self.assertEqual(registered.data['approval_status'], 'pending')
+        self.assertEqual(registered.data['full_name'], 'Harsh Kumar')
+        self.assertEqual(registered.data['upi_id'], 'harsh@okaxis')
+        self.assertEqual(registered.data['aadhaar_last4'], '0123')
+        self.assertEqual(registered.data['cities'], [self.city.name])
         jobs = self.client.get('/api/v1/partner/jobs/')
         self.assertEqual(jobs.status_code, status.HTTP_403_FORBIDDEN)
 

@@ -18,6 +18,17 @@ class PartnerProfile(UUIDModel):
         related_name='partner_profile',
     )
     full_name = models.CharField(max_length=150)
+    email = models.EmailField(blank=True)
+    address_line = models.CharField(max_length=255, blank=True)
+    pincode = models.CharField(max_length=6, blank=True)
+    years_experience = models.PositiveSmallIntegerField(default=0)
+    aadhaar_number = models.CharField(max_length=12, blank=True)
+    pan_number = models.CharField(max_length=10, blank=True)
+    upi_id = models.CharField(max_length=100, blank=True)
+    upi_phone = models.CharField(max_length=10, blank=True)
+    bank_account_holder = models.CharField(max_length=150, blank=True)
+    bank_account_number = models.CharField(max_length=20, blank=True)
+    bank_ifsc = models.CharField(max_length=11, blank=True)
     is_active = models.BooleanField(default=False)
     is_available_for_assignment = models.BooleanField(default=True)
     approval_status = models.CharField(
@@ -34,6 +45,26 @@ class PartnerProfile(UUIDModel):
 
     def __str__(self):
         return self.full_name or self.user.phone_number
+
+    @property
+    def registration_is_complete(self):
+        if not (self.full_name or '').strip():
+            return False
+        if not (self.address_line or '').strip():
+            return False
+        if len(''.join(ch for ch in (self.pincode or '') if ch.isdigit())) != 6:
+            return False
+        if len(''.join(ch for ch in (self.aadhaar_number or '') if ch.isdigit())) != 12:
+            return False
+        if not self.cities.exists() or not self.services.exists():
+            return False
+        has_upi = bool((self.upi_id or '').strip() or (self.upi_phone or '').strip())
+        has_bank = bool(
+            (self.bank_account_holder or '').strip()
+            and (self.bank_account_number or '').strip()
+            and (self.bank_ifsc or '').strip()
+        )
+        return has_upi or has_bank
 
 
 class PartnerCity(UUIDModel):

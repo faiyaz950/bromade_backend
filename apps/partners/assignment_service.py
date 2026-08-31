@@ -142,3 +142,18 @@ class AssignmentService:
             note=f'Rejected by partner {partner.full_name}.',
         )
         return AssignmentService.auto_assign_booking(booking)
+
+    @staticmethod
+    def assign_open_confirmed_bookings() -> int:
+        assigned = 0
+        bookings = Booking.objects.filter(
+            status=Booking.Status.CONFIRMED,
+            assignment_status__in=[
+                Booking.AssignmentStatus.UNASSIGNED,
+                Booking.AssignmentStatus.REJECTED,
+            ],
+        )
+        for booking in bookings:
+            if AssignmentService.auto_assign_booking(booking) is not None:
+                assigned += 1
+        return assigned

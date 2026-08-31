@@ -578,6 +578,14 @@ class Command(BaseCommand):
                 user=user,
                 defaults={
                     'full_name': name,
+                    'email': f'{phone[-4:]}@partners.bayti.in',
+                    'address_line': 'Bayti Partner Hub, Indiranagar',
+                    'pincode': '560038',
+                    'years_experience': 5,
+                    'aadhaar_number': '234567890123',
+                    'pan_number': 'ABCDE1234F',
+                    'upi_id': f'{phone[-10:]}@okaxis',
+                    'upi_phone': phone[-10:],
                     'is_active': True,
                     'is_available_for_assignment': True,
                     'approval_status': PartnerProfile.ApprovalStatus.APPROVED,
@@ -591,23 +599,7 @@ class Command(BaseCommand):
     def _assign_unassigned_bookings(self):
         from apps.partners.assignment_service import AssignmentService
 
-        assigned = 0
-        bookings = Booking.objects.filter(status=Booking.Status.CONFIRMED).exclude(
-            assignment_status=Booking.AssignmentStatus.ACCEPTED,
-        )
-        for booking in bookings:
-            has_open = BookingAssignment.objects.filter(
-                booking=booking,
-                status__in=[
-                    BookingAssignment.Status.PENDING,
-                    BookingAssignment.Status.ACCEPTED,
-                ],
-            ).exists()
-            if has_open:
-                continue
-            if AssignmentService.auto_assign_booking(booking) is not None:
-                assigned += 1
-        return assigned
+        return AssignmentService.assign_open_confirmed_bookings()
 
     def _seed_demo_bookings(self, user, address, packages):
         if not packages:

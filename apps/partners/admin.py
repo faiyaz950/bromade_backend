@@ -62,7 +62,20 @@ class PartnerProfileAdmin(admin.ModelAdmin):
     inlines = [PartnerCityInline, PartnerServiceInline, PartnerUnavailableDateInline, PartnerAssignmentInline]
     actions = ('approve_partners', 'reject_partners', 'activate_partners', 'deactivate_partners')
     fieldsets = (
-        ('Partner', {'fields': ('user', 'full_name', 'approval_status', 'approval_note')}),
+        ('Partner', {'fields': ('user', 'full_name', 'email', 'approval_status', 'approval_note')}),
+        ('Home & KYC', {'fields': ('address_line', 'pincode', 'years_experience', 'aadhaar_number', 'pan_number')}),
+        (
+            'Payout',
+            {
+                'fields': (
+                    'upi_id',
+                    'upi_phone',
+                    'bank_account_holder',
+                    'bank_account_number',
+                    'bank_ifsc',
+                )
+            },
+        ),
         ('Operations', {'fields': ('is_active', 'is_available_for_assignment')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
@@ -129,14 +142,52 @@ class PartnerProfileAdmin(admin.ModelAdmin):
     def accepted_jobs(self, obj):
         return obj.accepted_jobs_count
 
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        obj = form.instance
+        if obj.approval_status == PartnerProfile.ApprovalStatus.APPROVED and not obj.registration_is_complete:
+            obj.approval_status = PartnerProfile.ApprovalStatus.PENDING
+            obj.is_active = False
+            obj.save(update_fields=['approval_status', 'is_active', 'updated_at'])
+            self.message_user(
+                request,
+                'This partner still needs home address, Aadhaar, cities, services, and UPI or bank details before approval.',
+                messages.WARNING,
+            )
+        elif obj.approval_status == PartnerProfile.ApprovalStatus.APPROVED:
+            from .assignment_service import AssignmentService
+
+            assigned = AssignmentService.assign_open_confirmed_bookings()
+            if assigned:
+                self.message_user(request, f'{assigned} open booking(s) assigned after this approval.', messages.SUCCESS)
+
     @admin.action(description='Approve selected partners')
     def approve_partners(self, request, queryset):
-        updated = queryset.update(
-            approval_status=PartnerProfile.ApprovalStatus.APPROVED,
-            is_active=True,
-            updated_at=timezone.now(),
-        )
-        self.message_user(request, f'{updated} partner(s) approved.', messages.SUCCESS)
+        from .assignment_service import AssignmentService
+
+        approved = 0
+        skipped = 0
+        for partner in queryset:
+            if not partner.registration_is_complete:
+                skipped += 1
+                continue
+            partner.approval_status = PartnerProfile.ApprovalStatus.APPROVED
+            partner.is_active = True
+            partner.save(update_fields=['approval_status', 'is_active', 'updated_at'])
+            approved += 1
+        assigned = AssignmentService.assign_open_confirmed_bookings() if approved else 0
+        if approved:
+            self.message_user(
+                request,
+                f'{approved} partner(s) approved. {assigned} open booking(s) assigned.',
+                messages.SUCCESS,
+            )
+        if skipped:
+            self.message_user(
+                request,
+                f'{skipped} partner(s) skipped — complete registration first.',
+                messages.WARNING,
+            )
 
     @admin.action(description='Reject selected partners')
     def reject_partners(self, request, queryset):
