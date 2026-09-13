@@ -147,7 +147,7 @@ SIMPLE_JWT = {
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'Brolytics Home Services API',
+    'TITLE': 'Bayti Home Services API',
     'DESCRIPTION': 'Booking MVP APIs for the customer application.',
     'VERSION': '1.0.0',
 }

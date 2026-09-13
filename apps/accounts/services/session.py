@@ -91,6 +91,48 @@ def issue_firebase_auth_payload(decoded, first_name='', last_name=''):
     )
 
 
+def issue_email_register_payload(email, password, first_name='', last_name=''):
+    normalized = (email or '').strip().lower()
+    if not normalized:
+        raise ValueError('Email is required.')
+    if User.objects.filter(email__iexact=normalized).exists():
+        raise ValueError('An account with this email already exists.')
+
+    user = User(
+        phone_number=None,
+        email=normalized,
+        first_name=(first_name or '').strip(),
+        last_name=(last_name or '').strip(),
+    )
+    user.set_password(password)
+    try:
+        user.save()
+    except IntegrityError as exc:
+        raise ValueError('An account with this email already exists.') from exc
+
+    _sync_profile(user)
+    return _token_payload(user, True)
+
+
+def issue_email_login_payload(email, password):
+    normalized = (email or '').strip().lower()
+    if not normalized:
+        raise ValueError('Email is required.')
+
+    user = User.objects.filter(email__iexact=normalized).first()
+    if user is None:
+        raise ValueError('Invalid email or password.')
+    if not user.has_usable_password():
+        raise ValueError('This account uses Google Sign-In. Continue with Google.')
+    if not user.check_password(password):
+        raise ValueError('Invalid email or password.')
+    if not user.is_active:
+        raise ValueError('This account is inactive.')
+
+    _sync_profile(user)
+    return _token_payload(user, False)
+
+
 def issue_google_auth_payload(email, google_id, first_name='', last_name=''):
     user = None
     if google_id:

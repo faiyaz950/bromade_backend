@@ -136,3 +136,56 @@ class AuthAPITests(APITestCase):
         refreshed = self.client.post('/api/v1/auth/token/refresh/', {'refresh': refresh}, format='json')
         self.assertEqual(refreshed.status_code, status.HTTP_200_OK)
         self.assertIn('access', refreshed.data)
+
+    def test_email_register_and_login(self):
+        register = self.client.post(
+            '/api/v1/auth/register/',
+            {
+                'email': 'customer@example.com',
+                'password': 'secretpass',
+                'first_name': 'Bro',
+                'last_name': 'User',
+            },
+            format='json',
+        )
+        self.assertEqual(register.status_code, status.HTTP_201_CREATED)
+        self.assertIn('access', register.data)
+        self.assertTrue(register.data['is_new_user'])
+        self.assertEqual(register.data['user']['email'], 'customer@example.com')
+        self.assertEqual(register.data['user']['full_name'], 'Bro User')
+
+        login = self.client.post(
+            '/api/v1/auth/login/',
+            {'email': 'customer@example.com', 'password': 'secretpass'},
+            format='json',
+        )
+        self.assertEqual(login.status_code, status.HTTP_200_OK)
+        self.assertFalse(login.data['is_new_user'])
+        self.assertEqual(login.data['user']['id'], register.data['user']['id'])
+
+        bad = self.client.post(
+            '/api/v1/auth/login/',
+            {'email': 'customer@example.com', 'password': 'wrongpass'},
+            format='json',
+        )
+        self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch('apps.accounts.serializers.verify_id_token')
+    def test_google_account_cannot_login_with_password(self, mock_verify):
+        mock_verify.return_value = {
+            'email': 'google.only@gmail.com',
+            'name': 'Google User',
+            'user_id': 'google-uid-pw',
+            'sub': 'google-uid-pw',
+        }
+        self.client.post(
+            '/api/v1/auth/firebase/',
+            {'id_token': 'fake-google-token'},
+            format='json',
+        )
+        login = self.client.post(
+            '/api/v1/auth/login/',
+            {'email': 'google.only@gmail.com', 'password': 'anything123'},
+            format='json',
+        )
+        self.assertEqual(login.status_code, status.HTTP_400_BAD_REQUEST)

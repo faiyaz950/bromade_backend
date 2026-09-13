@@ -1,6 +1,6 @@
-# Brolytics Backend
+# Bayti Backend
 
-Booking MVP backend for Brolytics Home Services.
+Booking MVP backend for Bayti Home Services.
 
 ## Setup
 

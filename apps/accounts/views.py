@@ -1,6 +1,13 @@
 from rest_framework import generics, permissions, response, status
 
-from .serializers import FirebaseAuthSerializer, OTPRequestSerializer, OTPVerifySerializer, UserSerializer
+from .serializers import (
+    EmailLoginSerializer,
+    EmailRegisterSerializer,
+    FirebaseAuthSerializer,
+    OTPRequestSerializer,
+    OTPVerifySerializer,
+    UserSerializer,
+)
 
 
 class OTPRequestView(generics.GenericAPIView):
@@ -56,6 +63,40 @@ class FirebaseAuthView(generics.GenericAPIView):
                 'user': UserSerializer(payload['user']).data,
             }
         )
+
+
+def _auth_response(payload, *, created_status=False):
+    body = {
+        'access': payload['access'],
+        'refresh': payload['refresh'],
+        'is_new_user': payload['is_new_user'],
+        'user': UserSerializer(payload['user']).data,
+    }
+    if created_status:
+        return response.Response(body, status=status.HTTP_201_CREATED)
+    return response.Response(body)
+
+
+class EmailRegisterView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = EmailRegisterSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.save()
+        return _auth_response(payload, created_status=True)
+
+
+class EmailLoginView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = EmailLoginSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.save()
+        return _auth_response(payload)
 
 
 class MeView(generics.RetrieveUpdateAPIView):

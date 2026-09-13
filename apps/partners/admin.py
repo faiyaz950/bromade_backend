@@ -10,25 +10,61 @@ from .models import PartnerCity, PartnerProfile, PartnerService, PartnerUnavaila
 from .wallet_service import WalletService
 
 
-class PartnerWalletCreditForm(forms.ModelForm):
+class PartnerWalletForm(forms.ModelForm):
     add_wallet_amount = forms.DecimalField(
         required=False,
         min_value=0,
         max_digits=10,
         decimal_places=2,
-        label='Add wallet amount',
-        help_text='Partner paid you this amount in real money. It is added to their wallet 1:1.',
+        label='Add to wallet',
+        help_text='Partner paid you this amount. It is added 1:1.',
+    )
+    remove_wallet_amount = forms.DecimalField(
+        required=False,
+        min_value=0,
+        max_digits=10,
+        decimal_places=2,
+        label='Remove from wallet',
+        help_text='Subtract this amount. Cannot go below ₹0.',
+    )
+    set_wallet_to = forms.DecimalField(
+        required=False,
+        min_value=0,
+        max_digits=10,
+        decimal_places=2,
+        label='Set wallet to',
+        help_text='Replace the balance with this exact amount (add or remove the difference).',
     )
     wallet_note = forms.CharField(
         required=False,
         max_length=255,
         label='Wallet note',
-        help_text='Optional. Example: UPI received 12 Mar.',
+        help_text='Optional. Example: refund, correction, UPI received 12 Mar.',
     )
 
     class Meta:
         model = PartnerProfile
         fields = '__all__'
+
+    def clean(self):
+        cleaned = super().clean()
+        add = cleaned.get('add_wallet_amount') or 0
+        remove = cleaned.get('remove_wallet_amount') or 0
+        target = cleaned.get('set_wallet_to')
+        using_add = add > 0
+        using_remove = remove > 0
+        using_set = target is not None
+        if sum([using_add, using_remove, using_set]) > 1:
+            raise forms.ValidationError(
+                'Use only one wallet change at a time: add, remove, or set wallet to.'
+            )
+        if using_remove and self.instance.pk:
+            balance = self.instance.wallet_balance or 0
+            if remove > balance:
+                raise forms.ValidationError(
+                    f'Cannot remove ₹{remove}. Current wallet is ₹{balance}.'
+                )
+        return cleaned
 
 
 class PartnerCityInline(admin.TabularInline):
@@ -81,7 +117,7 @@ class WalletTransactionInline(admin.TabularInline):
 
 @admin.register(PartnerProfile)
 class PartnerProfileAdmin(admin.ModelAdmin):
-    form = PartnerWalletCreditForm
+    form = PartnerWalletForm
     list_display = (
         'full_name',
         'phone_number',
@@ -125,8 +161,18 @@ class PartnerProfileAdmin(admin.ModelAdmin):
         (
             'Wallet',
             {
-                'fields': ('wallet_balance', 'add_wallet_amount', 'wallet_note'),
-                'description': 'Partner pays you real money. Add the same amount here. They need 30% of a job in this wallet to accept it.',
+                'fields': (
+                    'wallet_balance',
+                    'add_wallet_amount',
+                    'remove_wallet_amount',
+                    'set_wallet_to',
+                    'wallet_note',
+                ),
+                'description': (
+                    'Current balance is read-only. Add money after a real payment, '
+                    'remove to correct an over-credit, or set wallet to an exact amount. '
+                    'Partners need 30% of a job in this wallet to accept it.'
+                ),
             },
         ),
         ('Operations', {'fields': ('is_active', 'is_available_for_assignment')}),
@@ -153,19 +199,49 @@ class PartnerProfileAdmin(admin.ModelAdmin):
             obj.is_active = False
             obj.is_available_for_assignment = False
         super().save_model(request, obj, form, change)
-        amount = form.cleaned_data.get('add_wallet_amount')
-        if amount:
-            WalletService.credit(
-                partner=obj,
-                amount=amount,
-                note=form.cleaned_data.get('wallet_note') or f'Admin credit by {request.user}',
-                created_by=request.user,
-            )
-            self.message_user(
-                request,
-                f'Added ₹{amount} to wallet. New balance ₹{obj.wallet_balance}.',
-                messages.SUCCESS,
-            )
+        note = form.cleaned_data.get('wallet_note') or ''
+        add = form.cleaned_data.get('add_wallet_amount')
+        remove = form.cleaned_data.get('remove_wallet_amount')
+        target = form.cleaned_data.get('set_wallet_to')
+        try:
+            if target is not None:
+                WalletService.set_balance(
+                    partner=obj,
+                    amount=target,
+                    note=note or f'Admin set wallet to ₹{target}',
+                    created_by=request.user,
+                )
+                self.message_user(
+                    request,
+                    f'Wallet set to ₹{obj.wallet_balance}.',
+                    messages.SUCCESS,
+                )
+            elif add:
+                WalletService.credit(
+                    partner=obj,
+                    amount=add,
+                    note=note or f'Admin credit by {request.user}',
+                    created_by=request.user,
+                )
+                self.message_user(
+                    request,
+                    f'Added ₹{add} to wallet. New balance ₹{obj.wallet_balance}.',
+                    messages.SUCCESS,
+                )
+            elif remove:
+                WalletService.debit(
+                    partner=obj,
+                    amount=remove,
+                    note=note or f'Admin debit by {request.user}',
+                    created_by=request.user,
+                )
+                self.message_user(
+                    request,
+                    f'Removed ₹{remove} from wallet. New balance ₹{obj.wallet_balance}.',
+                    messages.SUCCESS,
+                )
+        except ValueError as exc:
+            self.message_user(request, str(exc), messages.ERROR)
 
     @admin.display(description='Phone', ordering='user__phone_number')
     def phone_number(self, obj):

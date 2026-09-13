@@ -3,7 +3,12 @@ from rest_framework import serializers
 from .models import User
 from .services.firebase import verify_id_token
 from .services.otp import OTPService
-from .services.session import issue_auth_payload, issue_firebase_auth_payload
+from .services.session import (
+    issue_auth_payload,
+    issue_email_login_payload,
+    issue_email_register_payload,
+    issue_firebase_auth_payload,
+)
 
 
 def normalize_phone_number(value):
@@ -78,6 +83,38 @@ class FirebaseAuthSerializer(serializers.Serializer):
             )
         except ValueError as exc:
             raise serializers.ValidationError({'id_token': str(exc)}) from exc
+
+
+class EmailRegisterSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(min_length=8, max_length=128, write_only=True)
+    first_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+
+    def create(self, validated_data):
+        try:
+            return issue_email_register_payload(
+                email=validated_data['email'],
+                password=validated_data['password'],
+                first_name=validated_data.get('first_name', ''),
+                last_name=validated_data.get('last_name', ''),
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError({'email': str(exc)}) from exc
+
+
+class EmailLoginSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(max_length=128, write_only=True)
+
+    def create(self, validated_data):
+        try:
+            return issue_email_login_payload(
+                email=validated_data['email'],
+                password=validated_data['password'],
+            )
+        except ValueError as exc:
+            raise serializers.ValidationError({'password': str(exc)}) from exc
 
 
 class UserSerializer(serializers.ModelSerializer):

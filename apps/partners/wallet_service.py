@@ -62,6 +62,53 @@ class WalletService:
             return txn
 
     @staticmethod
+    def debit(*, partner: PartnerProfile, amount, note: str = '', created_by=None) -> WalletTransaction:
+        debit_amount = money(amount)
+        if debit_amount <= 0:
+            raise ValueError('Wallet debit must be greater than zero.')
+        with transaction.atomic():
+            locked = PartnerProfile.objects.select_for_update().get(pk=partner.pk)
+            balance = money(locked.wallet_balance)
+            if debit_amount > balance:
+                raise ValueError(
+                    f'Cannot remove {inr(debit_amount)}. Wallet is only {inr(balance)}.'
+                )
+            locked.wallet_balance = balance - debit_amount
+            locked.save(update_fields=['wallet_balance', 'updated_at'])
+            txn = WalletTransaction.objects.create(
+                partner=locked,
+                entry_type=WalletTransaction.EntryType.DEBIT,
+                amount=debit_amount,
+                balance_after=locked.wallet_balance,
+                note=(note or 'Admin wallet debit')[:255],
+                created_by=created_by,
+            )
+            partner.wallet_balance = locked.wallet_balance
+            return txn
+
+    @staticmethod
+    def set_balance(*, partner: PartnerProfile, amount, note: str = '', created_by=None):
+        target = money(amount)
+        if target < 0:
+            raise ValueError('Wallet balance cannot be negative.')
+        current = money(PartnerProfile.objects.get(pk=partner.pk).wallet_balance)
+        if target > current:
+            return WalletService.credit(
+                partner=partner,
+                amount=target - current,
+                note=note or f'Admin set wallet to {inr(target)}',
+                created_by=created_by,
+            )
+        if target < current:
+            return WalletService.debit(
+                partner=partner,
+                amount=current - target,
+                note=note or f'Admin set wallet to {inr(target)}',
+                created_by=created_by,
+            )
+        return None
+
+    @staticmethod
     def debit_commission(*, partner: PartnerProfile, booking) -> WalletTransaction:
         required = commission_amount(booking.total_amount)
         with transaction.atomic():

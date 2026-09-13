@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 {% load static %}
 
-{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Brolytics Admin') }}{% endblock %}
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Bayti Admin') }}{% endblock %}
 
 {% block extrastyle %}
 {{ block.super }}
@@ -24,7 +24,7 @@
 <h1 id="site-name" class="bl-brand">
   <span class="bl-mark" aria-hidden="true">⌂</span>
   <span>
-    <a href="{% url 'admin:index' %}">{{ site_header|default:_('Brolytics Operations') }}</a>
+    <a href="{% url 'admin:index' %}">{{ site_header|default:_('Bayti Operations') }}</a>
     <span class="bl-sub">Home Services · Admin</span>
   </span>
 </h1>

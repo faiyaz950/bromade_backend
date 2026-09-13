@@ -116,10 +116,14 @@ class PartnerAssignmentTests(APITestCase):
         return booking_id
 
     def _accept_assignment(self, booking_id, partner_user=None):
-        assignment = BookingAssignment.objects.get(
+        qs = BookingAssignment.objects.filter(
             booking_id=booking_id,
             status=BookingAssignment.Status.PENDING,
         )
+        if partner_user is not None:
+            assignment = qs.get(partner__user=partner_user)
+        else:
+            assignment = qs.filter(partner=self.partner).first() or qs.first()
         user = partner_user or assignment.partner.user
         self.client.force_authenticate(user=user)
         accept_response = self.client.post(f'/api/v1/partner/jobs/assignments/{assignment.id}/accept/')
@@ -140,7 +144,7 @@ class PartnerAssignmentTests(APITestCase):
         booking_id = self._create_and_pay_booking()
         booking = Booking.objects.get(pk=booking_id)
         self.assertEqual(booking.assignment_status, Booking.AssignmentStatus.PENDING)
-        self.assertEqual(booking.assignments.filter(status=BookingAssignment.Status.PENDING).count(), 1)
+        self.assertEqual(booking.assignments.filter(status=BookingAssignment.Status.PENDING).count(), 2)
 
         self.client.force_authenticate(user=self.customer)
         customer_view = self.client.get(f'/api/v1/bookings/{booking_id}/')
@@ -171,7 +175,7 @@ class PartnerAssignmentTests(APITestCase):
         self.assertIsNotNone(first)
         self.assertEqual(first.id, second.id)
         self.assertEqual(booking.assignment_status, Booking.AssignmentStatus.PENDING)
-        self.assertEqual(booking.assignments.count(), 1)
+        self.assertEqual(booking.assignments.filter(status=BookingAssignment.Status.PENDING).count(), 2)
 
         self.client.force_authenticate(user=first.partner.user)
         jobs = self.client.get('/api/v1/partner/jobs/')
@@ -181,7 +185,7 @@ class PartnerAssignmentTests(APITestCase):
 
     def test_partner_can_list_and_accept_job(self):
         booking_id = self._create_and_pay_booking()
-        assignment = BookingAssignment.objects.get(booking_id=booking_id)
+        assignment = BookingAssignment.objects.get(booking_id=booking_id, partner=self.partner)
 
         self.client.force_authenticate(user=self.partner_user)
         list_response = self.client.get('/api/v1/partner/jobs/')
@@ -204,6 +208,36 @@ class PartnerAssignmentTests(APITestCase):
         self.assertEqual(customer_view.data['partner_name'], assignment.partner.full_name)
         self.assertEqual(customer_view.data['partner_phone'], self.partner_user.phone_number)
         self.assertEqual(customer_view.data['visit_status'], 'scheduled')
+
+    def test_all_matching_partners_receive_the_job_offer(self):
+        booking_id = self._create_and_pay_booking()
+        self.assertEqual(
+            BookingAssignment.objects.filter(
+                booking_id=booking_id,
+                status=BookingAssignment.Status.PENDING,
+            ).count(),
+            2,
+        )
+
+        self.client.force_authenticate(user=self.partner_user)
+        ravi_jobs = self.client.get('/api/v1/partner/jobs/')
+        self.assertEqual(len(ravi_jobs.data), 1)
+
+        self.client.force_authenticate(user=self.partner_user_2)
+        anita_jobs = self.client.get('/api/v1/partner/jobs/')
+        self.assertEqual(len(anita_jobs.data), 1)
+
+        ravi_assignment = BookingAssignment.objects.get(booking_id=booking_id, partner=self.partner)
+        self.client.force_authenticate(user=self.partner_user)
+        accept = self.client.post(f'/api/v1/partner/jobs/assignments/{ravi_assignment.id}/accept/')
+        self.assertEqual(accept.status_code, status.HTTP_200_OK)
+
+        other = BookingAssignment.objects.get(booking_id=booking_id, partner=self.partner_2)
+        self.assertEqual(other.status, BookingAssignment.Status.REASSIGNED)
+
+        self.client.force_authenticate(user=self.partner_user_2)
+        anita_after = self.client.get('/api/v1/partner/jobs/')
+        self.assertEqual(len(anita_after.data), 0)
 
     def test_partner_reject_triggers_reassignment(self):
         booking_id = self._create_and_pay_booking()
@@ -390,6 +424,7 @@ class PartnerAssignmentTests(APITestCase):
         booking_id_2 = self._create_cash_booking()
         assignment_2 = BookingAssignment.objects.get(
             booking_id=booking_id_2,
+            partner=self.partner,
             status=BookingAssignment.Status.PENDING,
         )
         self.client.force_authenticate(user=assignment_2.partner.user)
@@ -404,7 +439,7 @@ class PartnerAssignmentTests(APITestCase):
         scheduled = timezone.localdate() + timedelta(days=1)
         PartnerUnavailableDate.objects.create(partner=self.partner, date=scheduled)
         booking_id = self._create_and_pay_booking()
-        assignment = BookingAssignment.objects.get(booking_id=booking_id)
+        assignment = BookingAssignment.objects.get(booking_id=booking_id, partner=self.partner_2)
         self.assertEqual(assignment.partner_id, self.partner_2.id)
 
         self.client.force_authenticate(user=self.partner_user)
@@ -446,7 +481,7 @@ class PartnerAssignmentTests(APITestCase):
 
         booking_id = self._create_and_pay_booking()
         booking = Booking.objects.get(pk=booking_id)
-        assignment = BookingAssignment.objects.get(booking_id=booking_id)
+        assignment = BookingAssignment.objects.get(booking_id=booking_id, partner=self.partner)
         needed = commission_amount(booking.total_amount)
         before = self.partner.wallet_balance
 
@@ -468,7 +503,7 @@ class PartnerAssignmentTests(APITestCase):
         self.partner.save(update_fields=['wallet_balance', 'updated_at'])
 
         booking_id = self._create_and_pay_booking()
-        assignment = BookingAssignment.objects.get(booking_id=booking_id)
+        assignment = BookingAssignment.objects.get(booking_id=booking_id, partner=self.partner)
 
         self.client.force_authenticate(user=self.partner_user)
         jobs = self.client.get('/api/v1/partner/jobs/')
@@ -485,3 +520,19 @@ class PartnerAssignmentTests(APITestCase):
         self.assertEqual(assignment.status, BookingAssignment.Status.PENDING)
         self.partner.refresh_from_db()
         self.assertEqual(self.partner.wallet_balance, 0)
+
+    def test_admin_can_remove_and_set_wallet_balance(self):
+        from decimal import Decimal
+
+        from apps.partners.wallet_service import WalletService
+
+        WalletService.debit(partner=self.partner, amount=Decimal('2500.00'), note='Correction')
+        self.partner.refresh_from_db()
+        self.assertEqual(self.partner.wallet_balance, Decimal('7500.00'))
+
+        WalletService.set_balance(partner=self.partner, amount=Decimal('1000.00'), note='Reset')
+        self.partner.refresh_from_db()
+        self.assertEqual(self.partner.wallet_balance, Decimal('1000.00'))
+
+        with self.assertRaises(ValueError):
+            WalletService.debit(partner=self.partner, amount=Decimal('5000.00'))
