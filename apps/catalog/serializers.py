@@ -48,6 +48,9 @@ class ServicePackageSerializer(serializers.ModelSerializer):
         city_id = self.context.get('city_id')
         if not city_id:
             return None
+        matched = getattr(obj, 'matched_city_prices', None)
+        if matched is not None:
+            return matched[0] if matched else None
         return obj.city_prices.filter(city_id=city_id, is_active=True).first()
 
     def get_effective_price(self, obj):
