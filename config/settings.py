@@ -127,7 +127,8 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-if not DEBUG:
+# Shared hosts cap thread counts, and WhiteNoise compresses in a thread pool.
+if not DEBUG and config('STATIC_COMPRESS', default=True, cast=bool):
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
