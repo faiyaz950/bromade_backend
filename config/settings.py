@@ -139,6 +139,23 @@ if not DEBUG:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+LOG_FILE = config('LOG_FILE', default='')
+if LOG_FILE:
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'formatters': {
+            'verbose': {'format': '%(asctime)s %(levelname)s %(name)s %(message)s'},
+        },
+        'handlers': {
+            'file': {'class': 'logging.FileHandler', 'filename': LOG_FILE, 'formatter': 'verbose'},
+        },
+        'loggers': {
+            'django.request': {'handlers': ['file'], 'level': 'WARNING', 'propagate': False},
+        },
+        'root': {'handlers': ['file'], 'level': 'WARNING'},
+    }
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',

@@ -28,6 +28,6 @@ if [ -d "$PUBLIC_DIR" ]; then
   echo "Updated CGI bridge and static files in $PUBLIC_DIR"
 fi
 
-mkdir -p tmp
+mkdir -p tmp logs
 touch tmp/restart.txt
 echo "Deploy complete."

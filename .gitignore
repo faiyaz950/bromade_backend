@@ -13,3 +13,4 @@ staticfiles/
 media/*
 !media/catalog/
 !media/catalog/**
+logs/
