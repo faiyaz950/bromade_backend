@@ -10,6 +10,7 @@ if [ -z "$PYTHON" ]; then
   fi
 fi
 PUBLIC_DIR="${PUBLIC_DIR:-$HOME/faiyaz.brolyticstechnologies.com}"
+mkdir -p tmp logs
 echo "Using $PYTHON ($("$PYTHON" --version))"
 
 "$PYTHON" -m pip install --upgrade pip
@@ -28,6 +29,5 @@ if [ -d "$PUBLIC_DIR" ]; then
   echo "Updated CGI bridge and static files in $PUBLIC_DIR"
 fi
 
-mkdir -p tmp logs
 touch tmp/restart.txt
 echo "Deploy complete."
