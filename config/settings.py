@@ -107,6 +107,7 @@ else:
     }
 
 if DATABASES['default']['ENGINE'] == 'django.db.backends.mysql':
+    DATABASES['default']['ENGINE'] = 'config.mysql_backend'
     DATABASES['default'].setdefault('OPTIONS', {}).update({
         'charset': 'utf8mb4',
         'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
