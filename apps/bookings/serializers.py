@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.catalog.models import CityPackagePrice, ServicePackage
+from apps.catalog.serializers import absolute_media_url
 from apps.coupons.services import CouponService, CouponValidationError
 from apps.locations.models import Address
 
@@ -84,9 +85,16 @@ class BookingDraftSerializer(serializers.Serializer):
 
 
 class BookingItemSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = BookingItem
-        fields = ('id', 'service_name', 'package_name', 'unit_price', 'quantity', 'line_total')
+        fields = ('id', 'service_name', 'package_name', 'unit_price', 'quantity', 'line_total', 'image_url')
+
+    def get_image_url(self, obj):
+        package = obj.package
+        raw = (package.image_url or '').strip() or package.service.resolved_image_url()
+        return absolute_media_url(self.context.get('request'), raw)
 
 
 class BookingSerializer(serializers.ModelSerializer):

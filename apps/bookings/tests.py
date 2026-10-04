@@ -26,7 +26,12 @@ class BookingAPITests(APITestCase):
             is_default=True,
         )
         category = Category.objects.create(name='Cleaning', description='Cleaning services')
-        service = Service.objects.create(category=category, name='Bathroom Cleaning', short_description='Deep clean')
+        service = Service.objects.create(
+            category=category,
+            name='Bathroom Cleaning',
+            short_description='Deep clean',
+            image_url='/media/catalog/real/bathroom.jpg',
+        )
         self.package = ServicePackage.objects.create(
             service=service,
             name='Classic Bathroom Clean',
@@ -50,6 +55,12 @@ class BookingAPITests(APITestCase):
         )
         self.assertEqual(booking_response.status_code, status.HTTP_201_CREATED)
         booking_id = booking_response.data['id']
+        self.assertTrue(booking_response.data['items'][0]['image_url'].endswith('/media/catalog/real/bathroom.jpg'))
+
+        listed = self.client.get('/api/v1/bookings/')
+        self.assertEqual(listed.status_code, status.HTTP_200_OK)
+        rows = listed.data['results'] if isinstance(listed.data, dict) else listed.data
+        self.assertTrue(rows[0]['items'][0]['image_url'].endswith('/media/catalog/real/bathroom.jpg'))
 
         payment_order = self.client.post('/api/v1/payments/orders/', {'booking_id': booking_id}, format='json')
         self.assertEqual(payment_order.status_code, status.HTTP_201_CREATED)

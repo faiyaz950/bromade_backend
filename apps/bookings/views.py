@@ -11,7 +11,7 @@ from .serializers import (
 )
 from .services import BookingService
 
-BOOKING_PREFETCH = ('items', 'payments', 'assignments__partner__user', 'status_logs')
+BOOKING_PREFETCH = ('items__package__service__category', 'payments', 'assignments__partner__user', 'status_logs')
 BOOKING_RELATED = ('rating', 'address', 'city')
 
 
