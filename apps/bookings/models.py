@@ -65,6 +65,8 @@ class Booking(UUIDModel):
         default=VisitStatus.NONE,
     )
     checklist = models.JSONField(default=list, blank=True)
+    start_photo = models.ImageField(upload_to='booking_photos/start/', blank=True, null=True)
+    completion_photo = models.ImageField(upload_to='booking_photos/completed/', blank=True, null=True)
 
     class Meta:
         ordering = ['-created_at']

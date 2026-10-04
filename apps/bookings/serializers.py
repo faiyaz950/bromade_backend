@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
+from django.db.models import Avg, Count
 from rest_framework import serializers
 
 from apps.catalog.models import CityPackagePrice, ServicePackage
@@ -8,6 +9,38 @@ from apps.coupons.services import CouponService, CouponValidationError
 from apps.locations.models import Address
 
 from .models import Booking, BookingAssignment, BookingItem
+
+TIMELINE_KEYS = ('on_the_way', 'arrived', 'in_progress', 'cash_collected', 'completed')
+
+
+def photo_url(field, request):
+    if not field:
+        return None
+    try:
+        url = field.url
+    except ValueError:
+        return None
+    return request.build_absolute_uri(url) if request else url
+
+
+def latest_payment(booking):
+    return max(booking.payments.all(), default=None, key=lambda p: p.created_at)
+
+
+def is_cash_collected(booking):
+    payment = latest_payment(booking)
+    return bool(payment and payment.method == 'cash' and payment.status == 'paid')
+
+
+def booking_timeline(booking, accepted_assignment=None):
+    """ISO timestamps for each visit milestone the booking has reached."""
+    timeline = {'booked': booking.created_at.isoformat()}
+    if accepted_assignment is not None and accepted_assignment.responded_at:
+        timeline['assigned'] = accepted_assignment.responded_at.isoformat()
+    for log in booking.status_logs.all():
+        if log.to_status in TIMELINE_KEYS:
+            timeline[log.to_status] = log.created_at.isoformat()
+    return timeline
 
 
 class BookingDraftSerializer(serializers.Serializer):
@@ -61,6 +94,13 @@ class BookingSerializer(serializers.ModelSerializer):
     rating_comment = serializers.SerializerMethodField()
     partner_name = serializers.SerializerMethodField()
     partner_phone = serializers.SerializerMethodField()
+    partner_average_rating = serializers.SerializerMethodField()
+    partner_rating_count = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
+    cash_collected = serializers.SerializerMethodField()
+    start_photo_url = serializers.SerializerMethodField()
+    completion_photo_url = serializers.SerializerMethodField()
+    timeline = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -71,8 +111,15 @@ class BookingSerializer(serializers.ModelSerializer):
             'status',
             'visit_status',
             'assignment_status',
+            'payment_status',
+            'cash_collected',
+            'start_photo_url',
+            'completion_photo_url',
+            'timeline',
             'partner_name',
             'partner_phone',
+            'partner_average_rating',
+            'partner_rating_count',
             'subtotal_amount',
             'discount_amount',
             'total_amount',
@@ -90,8 +137,24 @@ class BookingSerializer(serializers.ModelSerializer):
         return next((a for a in assignments if a.status == BookingAssignment.Status.ACCEPTED), None)
 
     def get_payment_method(self, obj):
-        latest_payment = max(obj.payments.all(), default=None, key=lambda p: p.created_at)
-        return latest_payment.method if latest_payment else None
+        payment = latest_payment(obj)
+        return payment.method if payment else None
+
+    def get_payment_status(self, obj):
+        payment = latest_payment(obj)
+        return payment.status if payment else None
+
+    def get_cash_collected(self, obj):
+        return is_cash_collected(obj)
+
+    def get_start_photo_url(self, obj):
+        return photo_url(obj.start_photo, self.context.get('request'))
+
+    def get_completion_photo_url(self, obj):
+        return photo_url(obj.completion_photo, self.context.get('request'))
+
+    def get_timeline(self, obj):
+        return booking_timeline(obj, self._accepted_assignment(obj))
 
     def get_rating_stars(self, obj):
         rating = getattr(obj, 'rating', None)
@@ -112,6 +175,29 @@ class BookingSerializer(serializers.ModelSerializer):
         if assignment is None:
             return ''
         return assignment.partner.user.phone_number or ''
+
+    def _partner_rating_stats(self, obj):
+        assignment = self._accepted_assignment(obj)
+        if assignment is None:
+            return {'avg': None, 'count': 0}
+        partner = assignment.partner
+        cached = getattr(partner, '_rating_stats', None)
+        if cached is not None:
+            return cached
+        stats = Booking.objects.filter(
+            assignments__partner=partner,
+            assignments__status=BookingAssignment.Status.ACCEPTED,
+            rating__isnull=False,
+        ).aggregate(avg=Avg('rating__stars'), count=Count('rating'))
+        partner._rating_stats = stats
+        return stats
+
+    def get_partner_average_rating(self, obj):
+        avg = self._partner_rating_stats(obj)['avg']
+        return round(float(avg), 1) if avg else None
+
+    def get_partner_rating_count(self, obj):
+        return self._partner_rating_stats(obj)['count'] or 0
 
 
 class BookingRatingSerializer(serializers.Serializer):

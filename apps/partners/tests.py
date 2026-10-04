@@ -1,8 +1,16 @@
+import json
 from datetime import timedelta
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
+
+# Smallest possible valid GIF — stands in for a partner-captured visit photo in tests.
+_TEST_IMAGE_BYTES = (
+    b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\x00\x00\x00'
+    b'!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
+)
 
 from apps.accounts.models import User
 from apps.bookings.models import Booking, BookingAssignment, BookingRating
@@ -130,10 +138,19 @@ class PartnerAssignmentTests(APITestCase):
         self.assertEqual(accept_response.status_code, status.HTTP_200_OK)
         return assignment
 
-    def _advance(self, assignment_id, visit_status, checklist=None):
+    def _advance(self, assignment_id, visit_status, checklist=None, photo=True):
         payload = {'visit_status': visit_status}
         if checklist is not None:
             payload['checklist'] = checklist
+        if photo and visit_status in ('in_progress', 'completed'):
+            payload['photo'] = SimpleUploadedFile(
+                'proof.gif', _TEST_IMAGE_BYTES, content_type='image/gif'
+            )
+            return self.client.post(
+                f'/api/v1/partner/jobs/assignments/{assignment_id}/visit/',
+                payload,
+                format='multipart',
+            )
         return self.client.post(
             f'/api/v1/partner/jobs/assignments/{assignment_id}/visit/',
             payload,
@@ -409,31 +426,101 @@ class PartnerAssignmentTests(APITestCase):
         self.assertEqual(float(me.data['average_rating']), 5.0)
         self.assertEqual(me.data['rating_count'], 1)
 
-    def test_cash_collect_and_auto_collect_on_complete(self):
+    def test_visit_photo_required_before_start_and_complete(self):
+        booking_id = self._create_and_pay_booking()
+        assignment = self._accept_assignment(booking_id)
+        self._advance(assignment.id, 'on_the_way')
+        self._advance(assignment.id, 'arrived')
+
+        missing_photo = self._advance(assignment.id, 'in_progress', photo=False)
+        self.assertEqual(missing_photo.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('photo', missing_photo.data)
+
+        started = self._advance(assignment.id, 'in_progress')
+        self.assertEqual(started.status_code, status.HTTP_200_OK)
+        booking = Booking.objects.get(pk=booking_id)
+        self.assertTrue(booking.start_photo)
+        self.assertIsNotNone(started.data.get('start_photo_url'))
+
+        missing_completion_photo = self._advance(assignment.id, 'completed', photo=False)
+        self.assertEqual(missing_completion_photo.status_code, status.HTTP_400_BAD_REQUEST)
+
+        completed = self._advance(assignment.id, 'completed')
+        self.assertEqual(completed.status_code, status.HTTP_200_OK)
+        booking.refresh_from_db()
+        self.assertTrue(booking.completion_photo)
+        self.assertIsNotNone(completed.data.get('completion_photo_url'))
+
+    def test_visit_complete_sends_checklist_as_json_string_with_photo(self):
+        # Mirrors exactly what the Flutter client sends: multipart/form-data
+        # with 'photo' as a file and 'checklist' as a jsonEncode()'d string,
+        # not a nested list — the view must decode that string itself.
+        booking_id = self._create_and_pay_booking()
+        assignment = self._accept_assignment(booking_id)
+        self._advance(assignment.id, 'on_the_way')
+        self._advance(assignment.id, 'arrived')
+        self._advance(assignment.id, 'in_progress')
+
+        booking = Booking.objects.get(pk=booking_id)
+        custom_checklist = [
+            {'id': item['id'], 'label': item['label'], 'done': True}
+            for item in booking.checklist
+        ]
+
+        response = self.client.post(
+            f'/api/v1/partner/jobs/assignments/{assignment.id}/visit/',
+            {
+                'visit_status': 'completed',
+                'checklist': json.dumps(custom_checklist),
+                'photo': SimpleUploadedFile(
+                    'proof.gif', _TEST_IMAGE_BYTES, content_type='image/gif'
+                ),
+            },
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        booking.refresh_from_db()
+        self.assertEqual(len(booking.checklist), len(custom_checklist))
+        self.assertTrue(all(item.get('done') for item in booking.checklist))
+
+    def test_cash_must_be_collected_after_start_and_before_complete(self):
         booking_id = self._create_cash_booking()
         assignment = self._accept_assignment(booking_id)
         payment = Payment.objects.get(booking_id=booking_id)
         self.assertEqual(payment.status, Payment.Status.CASH_PENDING)
+        collect_url = f'/api/v1/partner/jobs/assignments/{assignment.id}/collect-cash/'
 
-        collect = self.client.post(f'/api/v1/partner/jobs/assignments/{assignment.id}/collect-cash/')
+        too_early = self.client.post(collect_url)
+        self.assertEqual(too_early.status_code, status.HTTP_400_BAD_REQUEST)
+
+        for step in ('on_the_way', 'arrived', 'in_progress'):
+            response = self._advance(assignment.id, step)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        blocked = self._advance(assignment.id, 'completed')
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('cash', blocked.data['detail'].lower())
+
+        collect = self.client.post(collect_url)
         self.assertEqual(collect.status_code, status.HTTP_200_OK)
         self.assertTrue(collect.data['cash_collected'])
+        self.assertIn('cash_collected', collect.data['timeline'])
         payment.refresh_from_db()
         self.assertEqual(payment.status, Payment.Status.PAID)
 
-        booking_id_2 = self._create_cash_booking()
-        assignment_2 = BookingAssignment.objects.get(
-            booking_id=booking_id_2,
-            partner=self.partner,
-            status=BookingAssignment.Status.PENDING,
-        )
-        self.client.force_authenticate(user=assignment_2.partner.user)
-        self.client.post(f'/api/v1/partner/jobs/assignments/{assignment_2.id}/accept/')
-        for step in ('on_the_way', 'arrived', 'in_progress', 'completed'):
-            response = self._advance(assignment_2.id, step)
-            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        payment_2 = Payment.objects.get(booking_id=booking_id_2)
-        self.assertEqual(payment_2.status, Payment.Status.PAID)
+        completed = self._advance(assignment.id, 'completed')
+        self.assertEqual(completed.status_code, status.HTTP_200_OK, completed.data)
+        self.assertIsNotNone(completed.data['start_photo_url'])
+        self.assertIsNotNone(completed.data['completion_photo_url'])
+
+        self.client.force_authenticate(user=self.customer)
+        detail = self.client.get(f'/api/v1/bookings/{booking_id}/')
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        self.assertTrue(detail.data['cash_collected'])
+        self.assertTrue(detail.data['start_photo_url'].startswith('http'))
+        self.assertTrue(detail.data['completion_photo_url'].startswith('http'))
+        for key in ('booked', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'cash_collected', 'completed'):
+            self.assertIn(key, detail.data['timeline'])
 
     def test_unavailable_date_skips_partner_in_auto_assign(self):
         scheduled = timezone.localdate() + timedelta(days=1)

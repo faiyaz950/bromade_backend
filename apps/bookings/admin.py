@@ -79,12 +79,18 @@ class BookingAdmin(admin.ModelAdmin):
         'total_amount',
         'coupon',
         'coupon_code',
+        'start_photo_preview',
+        'completion_photo_preview',
     )
     autocomplete_fields = ('customer', 'address', 'city')
     inlines = [BookingItemInline, BookingAssignmentInline, PaymentInline, BookingStatusLogInline]
     fieldsets = (
         ('Customer order', {'fields': ('id', 'customer', 'status', 'visit_status', 'assignment_status', 'notes')}),
         ('Visit checklist', {'fields': ('checklist',)}),
+        (
+            'Visit photos',
+            {'fields': ('start_photo_preview', 'start_photo', 'completion_photo_preview', 'completion_photo')},
+        ),
         ('Schedule & location', {'fields': ('scheduled_date', 'scheduled_time', 'city', 'address')}),
         ('Pricing', {'fields': ('subtotal_amount', 'coupon', 'coupon_code', 'discount_amount', 'total_amount')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
@@ -141,6 +147,22 @@ class BookingAdmin(admin.ModelAdmin):
     @admin.display(description='Amount', ordering='total_amount')
     def amount_display(self, obj):
         return format_html('<span class="bl-amount">₹{}</span>', obj.total_amount)
+
+    def _photo_preview(self, photo):
+        if not photo:
+            return 'Not captured yet.'
+        return format_html(
+            '<img src="{}" style="max-width:280px;max-height:280px;object-fit:cover;border-radius:12px;" />',
+            photo.url,
+        )
+
+    @admin.display(description='Before starting')
+    def start_photo_preview(self, obj):
+        return self._photo_preview(obj.start_photo)
+
+    @admin.display(description='After completing')
+    def completion_photo_preview(self, obj):
+        return self._photo_preview(obj.completion_photo)
 
 
 @admin.register(BookingAssignment)

@@ -1,9 +1,11 @@
+import json
 from datetime import timedelta
 
 from django.db import IntegrityError
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import generics, permissions, response, status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from apps.bookings.models import Booking, BookingAssignment
 from apps.payments.models import Payment
@@ -204,7 +206,7 @@ class PartnerJobListView(generics.ListAPIView):
             return (
                 Booking.objects.filter(id__in=booking_ids, status=Booking.Status.COMPLETED)
                 .select_related('customer', 'address', 'city')
-                .prefetch_related('items', 'assignments', 'payments', 'rating')
+                .prefetch_related('items', 'assignments', 'payments', 'rating', 'status_logs')
             )
 
         assignment_status = requested
@@ -214,7 +216,7 @@ class PartnerJobListView(generics.ListAPIView):
         ).values_list('booking_id', flat=True)
         queryset = Booking.objects.filter(id__in=booking_ids).select_related(
             'customer', 'address', 'city'
-        ).prefetch_related('items', 'assignments', 'payments', 'rating')
+        ).prefetch_related('items', 'assignments', 'payments', 'rating', 'status_logs')
         if assignment_status in {
             BookingAssignment.Status.PENDING,
             BookingAssignment.Status.ACCEPTED,
@@ -264,7 +266,7 @@ class PartnerJobDetailView(generics.RetrieveAPIView):
         return (
             Booking.objects.filter(id__in=booking_ids)
             .select_related('customer', 'address', 'city')
-            .prefetch_related('items', 'assignments', 'payments', 'rating')
+            .prefetch_related('items', 'assignments', 'payments', 'rating', 'status_logs')
         )
 
     def retrieve(self, request, *args, **kwargs):
@@ -329,9 +331,26 @@ class PartnerJobRejectView(generics.GenericAPIView):
 class PartnerVisitAdvanceView(generics.GenericAPIView):
     permission_classes = [IsApprovedPartner]
     serializer_class = PartnerVisitActionSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def post(self, request, pk):
-        serializer = self.get_serializer(data=request.data)
+        # A multipart body (sent whenever a photo is attached) carries the
+        # checklist as a JSON-encoded string field, not a nested list. DRF's
+        # ListField reads QueryDict values via getlist(), so the parsed list
+        # must be assigned with setlist() — plain item assignment wraps it
+        # in an extra list layer and fails validation.
+        data = request.data
+        checklist_raw = data.get('checklist')
+        if isinstance(checklist_raw, str):
+            try:
+                parsed_checklist = json.loads(checklist_raw)
+            except (TypeError, ValueError):
+                parsed_checklist = None
+            if isinstance(parsed_checklist, list):
+                data = data.copy()
+                data.setlist('checklist', parsed_checklist)
+
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         try:
             if serializer.validated_data['visit_status'] == Booking.VisitStatus.COMPLETED:
@@ -339,12 +358,14 @@ class PartnerVisitAdvanceView(generics.GenericAPIView):
                     partner=request.user.partner_profile,
                     assignment_id=str(pk),
                     checklist=serializer.validated_data.get('checklist'),
+                    photo=serializer.validated_data.get('photo'),
                 )
             else:
                 booking = VisitService.advance(
                     partner=request.user.partner_profile,
                     assignment_id=str(pk),
                     visit_status=serializer.validated_data['visit_status'],
+                    photo=serializer.validated_data.get('photo'),
                 )
         except BookingAssignment.DoesNotExist:
             return response.Response({'detail': 'Assignment not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -361,7 +382,6 @@ class PartnerCashCollectView(generics.GenericAPIView):
             VisitService.collect_cash(
                 partner=request.user.partner_profile,
                 assignment_id=str(pk),
-                required=True,
             )
             assignment = BookingAssignment.objects.select_related('booking').get(
                 pk=pk, partner=request.user.partner_profile

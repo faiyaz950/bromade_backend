@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.bookings.models import Booking, BookingAssignment, BookingItem
+from apps.bookings.serializers import booking_timeline, photo_url
 from apps.catalog.models import Service
 from apps.locations.models import City
 from apps.partners.models import PartnerCity, PartnerDeviceToken, PartnerProfile, PartnerService, PartnerUnavailableDate
@@ -277,6 +278,9 @@ class PartnerJobSerializer(serializers.ModelSerializer):
     commission_amount = serializers.SerializerMethodField()
     can_accept = serializers.SerializerMethodField()
     low_wallet_balance = serializers.SerializerMethodField()
+    start_photo_url = serializers.SerializerMethodField()
+    completion_photo_url = serializers.SerializerMethodField()
+    timeline = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -287,6 +291,9 @@ class PartnerJobSerializer(serializers.ModelSerializer):
             'status',
             'visit_status',
             'checklist',
+            'start_photo_url',
+            'completion_photo_url',
+            'timeline',
             'scheduled_date',
             'scheduled_time',
             'total_amount',
@@ -394,6 +401,17 @@ class PartnerJobSerializer(serializers.ModelSerializer):
             return False
         return not self._wallet_covers_commission(obj)
 
+    def get_start_photo_url(self, obj):
+        return photo_url(obj.start_photo, self.context.get('request'))
+
+    def get_completion_photo_url(self, obj):
+        return photo_url(obj.completion_photo, self.context.get('request'))
+
+    def get_timeline(self, obj):
+        assignment = self._assignment(obj)
+        accepted = assignment if assignment and assignment.status == BookingAssignment.Status.ACCEPTED else None
+        return booking_timeline(obj, accepted)
+
 
 class PartnerJobRejectSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True, max_length=255)
@@ -409,6 +427,19 @@ class PartnerVisitActionSerializer(serializers.Serializer):
         ]
     )
     checklist = serializers.ListField(child=serializers.DictField(), required=False)
+    photo = serializers.ImageField(required=False)
+
+    def validate(self, attrs):
+        visit_status = attrs.get('visit_status')
+        photo_required = visit_status in (
+            Booking.VisitStatus.IN_PROGRESS,
+            Booking.VisitStatus.COMPLETED,
+        )
+        if photo_required and not attrs.get('photo'):
+            raise serializers.ValidationError(
+                {'photo': 'Take a photo before you continue.'}
+            )
+        return attrs
 
 
 class PartnerDeviceTokenSerializer(serializers.ModelSerializer):

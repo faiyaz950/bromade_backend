@@ -9,6 +9,17 @@ from .serializers import (
 )
 from .services import BookingService
 
+BOOKING_PREFETCH = ('items', 'payments', 'assignments__partner__user', 'status_logs')
+
+
+def _customer_bookings(user):
+    return Booking.objects.filter(customer=user).prefetch_related(*BOOKING_PREFETCH).select_related('rating')
+
+
+def _booking_response(request, booking_id, status_code=status.HTTP_200_OK):
+    booking = Booking.objects.prefetch_related(*BOOKING_PREFETCH).select_related('rating').get(pk=booking_id)
+    return response.Response(BookingSerializer(booking, context={'request': request}).data, status=status_code)
+
 
 class BookingPriceSummaryView(generics.GenericAPIView):
     serializer_class = BookingPriceSummarySerializer
@@ -29,41 +40,28 @@ class BookingCreateView(generics.GenericAPIView):
             booking = BookingService.create_booking(user=request.user, **serializer.validated_data)
         except ValueError as exc:
             return response.Response({'coupon_code': [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
-        return response.Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
+        return _booking_response(request, booking.pk, status.HTTP_201_CREATED)
 
 
 class BookingListView(generics.ListAPIView):
     serializer_class = BookingSerializer
 
     def get_queryset(self):
-        return (
-            Booking.objects.filter(customer=self.request.user)
-            .prefetch_related('items', 'payments', 'assignments__partner__user')
-            .select_related('rating')
-        )
+        return _customer_bookings(self.request.user)
 
 
 class BookingDetailView(generics.RetrieveAPIView):
     serializer_class = BookingSerializer
 
     def get_queryset(self):
-        return (
-            Booking.objects.filter(customer=self.request.user)
-            .prefetch_related('items', 'payments', 'assignments__partner__user')
-            .select_related('rating')
-        )
+        return _customer_bookings(self.request.user)
 
 
 class BookingConfirmView(generics.GenericAPIView):
     """Mark a pending booking as confirmed after successful payment orchestration."""
 
     def post(self, request, pk):
-        booking = (
-            Booking.objects.filter(customer=request.user, pk=pk)
-            .prefetch_related('items', 'payments', 'assignments__partner')
-            .select_related('rating')
-            .first()
-        )
+        booking = Booking.objects.filter(customer=request.user, pk=pk).first()
         if booking is None:
             return response.Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
         if booking.status not in {Booking.Status.DRAFT, Booking.Status.PENDING_PAYMENT, Booking.Status.CONFIRMED}:
@@ -74,13 +72,7 @@ class BookingConfirmView(generics.GenericAPIView):
         from apps.partners.assignment_service import AssignmentService
 
         AssignmentService.auto_assign_booking(booking)
-        booking = (
-            Booking.objects.filter(pk=booking.pk)
-            .prefetch_related('items', 'payments', 'assignments__partner')
-            .select_related('rating')
-            .get()
-        )
-        return response.Response(BookingSerializer(booking).data)
+        return _booking_response(request, booking.pk)
 
 
 class BookingRateView(generics.GenericAPIView):
@@ -105,10 +97,4 @@ class BookingRateView(generics.GenericAPIView):
             stars=serializer.validated_data['stars'],
             comment=serializer.validated_data.get('comment', ''),
         )
-        booking = (
-            Booking.objects.filter(pk=booking.pk)
-            .prefetch_related('items', 'payments', 'assignments__partner')
-            .select_related('rating')
-            .get()
-        )
-        return response.Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
+        return _booking_response(request, booking.pk, status.HTTP_201_CREATED)

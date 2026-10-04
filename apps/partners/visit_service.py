@@ -34,7 +34,7 @@ class VisitService:
             raise ValueError('This visit is not ready to start.')
 
     @classmethod
-    def advance(cls, *, partner, assignment_id: str, visit_status: str) -> Booking:
+    def advance(cls, *, partner, assignment_id: str, visit_status: str, photo=None) -> Booking:
         if visit_status not in VISIT_FLOW:
             raise ValueError('Unknown visit status.')
         assignment = cls._accepted_assignment(partner=partner, assignment_id=assignment_id)
@@ -49,11 +49,15 @@ class VisitService:
         if next_index != current_index + 1:
             raise ValueError('Advance the visit one step at a time.')
         if visit_status == Booking.VisitStatus.COMPLETED:
-            return cls.complete(partner=partner, assignment_id=assignment_id)
+            return cls.complete(partner=partner, assignment_id=assignment_id, photo=photo)
 
         previous = booking.visit_status
         booking.visit_status = visit_status
-        booking.save(update_fields=['visit_status', 'updated_at'])
+        update_fields = ['visit_status', 'updated_at']
+        if visit_status == Booking.VisitStatus.IN_PROGRESS and photo is not None:
+            booking.start_photo = photo
+            update_fields.append('start_photo')
+        booking.save(update_fields=update_fields)
         BookingStatusLog.objects.create(
             booking=booking,
             from_status=previous,
@@ -63,12 +67,15 @@ class VisitService:
         return booking
 
     @classmethod
-    def complete(cls, *, partner, assignment_id: str, checklist=None) -> Booking:
+    def complete(cls, *, partner, assignment_id: str, checklist=None, photo=None) -> Booking:
         assignment = cls._accepted_assignment(partner=partner, assignment_id=assignment_id)
         booking = assignment.booking
         cls._require_open_visit(booking)
         if booking.visit_status != Booking.VisitStatus.IN_PROGRESS:
             raise ValueError('Start the service before marking it complete.')
+        cash_payment = cls._cash_payment(booking)
+        if cash_payment is not None and cash_payment.status != Payment.Status.PAID:
+            raise ValueError('Collect the cash from the customer before completing the job.')
 
         items = checklist if isinstance(checklist, list) and checklist else booking.checklist
         if not items:
@@ -81,7 +88,11 @@ class VisitService:
         booking.checklist = items
         booking.visit_status = Booking.VisitStatus.COMPLETED
         booking.status = Booking.Status.COMPLETED
-        booking.save(update_fields=['checklist', 'visit_status', 'status', 'updated_at'])
+        update_fields = ['checklist', 'visit_status', 'status', 'updated_at']
+        if photo is not None:
+            booking.completion_photo = photo
+            update_fields.append('completion_photo')
+        booking.save(update_fields=update_fields)
         BookingStatusLog.objects.create(
             booking=booking,
             from_status=previous_visit,
@@ -95,20 +106,27 @@ class VisitService:
                 to_status=Booking.Status.COMPLETED,
                 note='Booking completed.',
             )
-        cls.collect_cash(partner=partner, assignment_id=assignment_id, required=False)
         return booking
 
+    @staticmethod
+    def _cash_payment(booking: Booking) -> Payment | None:
+        latest = booking.payments.order_by('-created_at').first()
+        if latest is None or latest.method != Payment.Method.CASH:
+            return None
+        return latest
+
     @classmethod
-    def collect_cash(cls, *, partner, assignment_id: str, required: bool = True) -> Payment | None:
+    def collect_cash(cls, *, partner, assignment_id: str) -> Payment:
         assignment = cls._accepted_assignment(partner=partner, assignment_id=assignment_id)
         booking = assignment.booking
-        payment = booking.payments.filter(method=Payment.Method.CASH).order_by('-created_at').first()
+        payment = cls._cash_payment(booking)
         if payment is None:
-            if required:
-                raise ValueError('This job is not a cash booking.')
-            return None
+            raise ValueError('This job is not a cash booking.')
         if payment.status == Payment.Status.PAID:
             return payment
+        cls._require_open_visit(booking)
+        if booking.visit_status != Booking.VisitStatus.IN_PROGRESS:
+            raise ValueError('Start the service before collecting cash.')
         previous = payment.status
         payment.status = Payment.Status.PAID
         payment.payload = {
