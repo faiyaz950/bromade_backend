@@ -1,0 +1,13 @@
+.venv
+.env
+.env.*
+!.env.example
+__pycache__
+*.py[cod]
+db.sqlite3
+staticfiles
+*.log
+cpanel
+passenger_wsgi.py
+deploy_cpanel.sh
+.DS_Store
