@@ -51,7 +51,7 @@ class BookingDraftSerializer(serializers.Serializer):
     scheduled_date = serializers.DateField()
     scheduled_time = serializers.TimeField()
     notes = serializers.CharField(required=False, allow_blank=True)
-    quantity = serializers.IntegerField(required=False, min_value=1, default=1)
+    quantity = serializers.IntegerField(required=False, min_value=1, max_value=10, default=1)
     coupon_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def validate_scheduled_date(self, value):

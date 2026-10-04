@@ -16,13 +16,14 @@ class CouponOfferSerializer(serializers.Serializer):
 class CouponListQuerySerializer(serializers.Serializer):
     package_id = serializers.UUIDField()
     city_id = serializers.UUIDField(required=False, allow_null=True)
+    quantity = serializers.IntegerField(required=False, min_value=1, max_value=10, default=1)
 
 
 class CouponValidateSerializer(serializers.Serializer):
     code = serializers.CharField()
     package_id = serializers.UUIDField()
     city_id = serializers.UUIDField(required=False, allow_null=True)
-    quantity = serializers.IntegerField(required=False, min_value=1, default=1)
+    quantity = serializers.IntegerField(required=False, min_value=1, max_value=10, default=1)
 
     def validate(self, attrs):
         attrs['code'] = CouponService.normalize_code(attrs.get('code'))

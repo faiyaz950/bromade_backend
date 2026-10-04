@@ -69,6 +69,31 @@ class BookingAPITests(APITestCase):
         self.assertEqual(booking.assignment_status, Booking.AssignmentStatus.UNASSIGNED)
         self.assertEqual(booking.assignments.count(), 0)
 
+    def _book(self, quantity):
+        return self.client.post(
+            '/api/v1/bookings/create/',
+            {
+                'package_id': str(self.package.id),
+                'address_id': str(self.address.id),
+                'scheduled_date': (timezone.localdate() + timedelta(days=1)).isoformat(),
+                'scheduled_time': '10:30:00',
+                'quantity': quantity,
+            },
+            format='json',
+        )
+
+    def test_booking_multiple_quantity_multiplies_total(self):
+        response = self._book(3)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        booking = Booking.objects.get(pk=response.data['id'])
+        self.assertEqual(booking.total_amount, 999 * 3)
+        item = booking.items.get()
+        self.assertEqual(item.quantity, 3)
+        self.assertEqual(item.line_total, 999 * 3)
+
+        too_many = self._book(11)
+        self.assertEqual(too_many.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_cannot_book_in_city_marked_available_soon(self):
         soon_city = City.objects.create(
             name='Lucknow',

@@ -58,7 +58,12 @@ class CouponListView(generics.GenericAPIView):
         city_id = query.validated_data.get('city_id')
         if city_id:
             city = City.objects.filter(pk=city_id).first()
-        offers = CouponService.list_offers(user=request.user, package=package, city=city)
+        offers = CouponService.list_offers(
+            user=request.user,
+            package=package,
+            city=city,
+            quantity=query.validated_data.get('quantity', 1),
+        )
         return response.Response(CouponOfferSerializer(offers, many=True).data)
 
 
