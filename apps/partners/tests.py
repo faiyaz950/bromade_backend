@@ -579,6 +579,23 @@ class PartnerAssignmentTests(APITestCase):
         again = self.client.post(f'/api/v1/bookings/{booking_id}/cancel/', {}, format='json')
         self.assertEqual(again.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_cancel_only_within_60_minutes_of_booking(self):
+        booking_id = self._create_and_pay_booking()
+        self.client.force_authenticate(user=self.customer)
+        detail = self.client.get(f'/api/v1/bookings/{booking_id}/')
+        self.assertTrue(detail.data['can_cancel'])
+        self.assertIsNotNone(detail.data['cancel_deadline'])
+
+        Booking.objects.filter(pk=booking_id).update(created_at=timezone.now() - timedelta(minutes=61))
+        expired = self.client.get(f'/api/v1/bookings/{booking_id}/')
+        self.assertFalse(expired.data['can_cancel'])
+        self.assertIsNone(expired.data['cancel_deadline'])
+        self.assertTrue(expired.data['can_reschedule'])
+
+        cancel = self.client.post(f'/api/v1/bookings/{booking_id}/cancel/', {}, format='json')
+        self.assertEqual(cancel.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('60 minutes', cancel.data['detail'])
+
     def test_cannot_cancel_or_reschedule_once_partner_is_on_the_way(self):
         booking_id = self._create_and_pay_booking()
         assignment = self._accept_assignment(booking_id)

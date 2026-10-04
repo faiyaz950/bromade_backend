@@ -12,6 +12,7 @@ from .models import Booking, BookingAssignment, BookingItem, BookingStatusLog
 
 MAX_RESCHEDULES = 2
 MIN_LEAD_TIME = timedelta(hours=1)
+CANCEL_WINDOW = timedelta(minutes=60)
 CHANGEABLE_STATUSES = {Booking.Status.PENDING_PAYMENT, Booking.Status.CONFIRMED}
 CHANGEABLE_VISIT_STATUSES = {'', Booking.VisitStatus.NONE, Booking.VisitStatus.SCHEDULED}
 
@@ -19,6 +20,14 @@ CHANGEABLE_VISIT_STATUSES = {'', Booking.VisitStatus.NONE, Booking.VisitStatus.S
 def can_change(booking) -> bool:
     """Customers can change a booking until the professional sets off."""
     return booking.status in CHANGEABLE_STATUSES and booking.visit_status in CHANGEABLE_VISIT_STATUSES
+
+
+def cancel_deadline(booking):
+    return booking.created_at + CANCEL_WINDOW
+
+
+def can_cancel(booking) -> bool:
+    return can_change(booking) and timezone.now() <= cancel_deadline(booking)
 
 
 def can_reschedule(booking) -> bool:
@@ -98,6 +107,10 @@ class BookingService:
         booking = Booking.objects.select_for_update().get(pk=booking.pk)
         if not can_change(booking):
             raise ValueError('This booking can no longer be cancelled. The professional is already on the way.')
+        if timezone.now() > cancel_deadline(booking):
+            raise ValueError(
+                'Bookings can only be cancelled within 60 minutes of booking. Please chat with support for help.'
+            )
 
         from .notifications import active_partners, partners_booking_cancelled
 

@@ -10,7 +10,7 @@ from apps.coupons.services import CouponService, CouponValidationError
 from apps.locations.models import Address
 
 from .models import Booking, BookingAssignment, BookingItem
-from .services import MAX_RESCHEDULES, can_change, can_reschedule
+from .services import MAX_RESCHEDULES, can_cancel, can_reschedule, cancel_deadline
 
 TIMELINE_KEYS = ('on_the_way', 'arrived', 'in_progress', 'cash_collected', 'completed')
 
@@ -107,6 +107,7 @@ class BookingSerializer(serializers.ModelSerializer):
     address_line = serializers.SerializerMethodField()
     city_name = serializers.CharField(source='city.name', read_only=True)
     can_cancel = serializers.SerializerMethodField()
+    cancel_deadline = serializers.SerializerMethodField()
     can_reschedule = serializers.SerializerMethodField()
     reschedules_left = serializers.SerializerMethodField()
     address_location = serializers.SerializerMethodField()
@@ -132,6 +133,7 @@ class BookingSerializer(serializers.ModelSerializer):
             'address_location',
             'partner_location',
             'can_cancel',
+            'cancel_deadline',
             'can_reschedule',
             'reschedules_left',
             'cancellation_reason',
@@ -205,7 +207,10 @@ class BookingSerializer(serializers.ModelSerializer):
         }
 
     def get_can_cancel(self, obj):
-        return can_change(obj)
+        return can_cancel(obj)
+
+    def get_cancel_deadline(self, obj):
+        return cancel_deadline(obj).isoformat() if can_cancel(obj) else None
 
     def get_can_reschedule(self, obj):
         return can_reschedule(obj)
