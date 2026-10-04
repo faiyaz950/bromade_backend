@@ -366,6 +366,7 @@ class PartnerVisitAdvanceView(generics.GenericAPIView):
                     assignment_id=str(pk),
                     visit_status=serializer.validated_data['visit_status'],
                     photo=serializer.validated_data.get('photo'),
+                    start_code=serializer.validated_data.get('start_code', ''),
                 )
         except BookingAssignment.DoesNotExist:
             return response.Response({'detail': 'Assignment not found.'}, status=status.HTTP_404_NOT_FOUND)

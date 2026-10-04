@@ -1,9 +1,15 @@
+import secrets
+
 from django.conf import settings
 from django.db import models
 
 from apps.catalog.models import ServicePackage
 from apps.common.models import UUIDModel
 from apps.locations.models import Address, City
+
+
+def generate_start_code():
+    return f'{secrets.randbelow(10000):04d}'
 
 
 def default_visit_checklist():
@@ -67,6 +73,14 @@ class Booking(UUIDModel):
     checklist = models.JSONField(default=list, blank=True)
     start_photo = models.ImageField(upload_to='booking_photos/start/', blank=True, null=True)
     completion_photo = models.ImageField(upload_to='booking_photos/completed/', blank=True, null=True)
+    start_code = models.CharField(
+        max_length=4,
+        default=generate_start_code,
+        help_text='Customer shares this code with the partner to start the service.',
+    )
+    reschedule_count = models.PositiveSmallIntegerField(default=0)
+    cancellation_reason = models.CharField(max_length=255, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']

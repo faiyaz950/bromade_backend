@@ -151,3 +151,8 @@ class UserSerializer(serializers.ModelSerializer):
             profile.full_name = f'{instance.first_name} {instance.last_name}'.strip()
             profile.save(update_fields=['full_name', 'updated_at'])
         return instance
+
+
+class DeviceTokenSerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=255)
+    platform = serializers.ChoiceField(choices=['android', 'ios'], default='android')

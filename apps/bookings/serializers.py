@@ -9,6 +9,7 @@ from apps.coupons.services import CouponService, CouponValidationError
 from apps.locations.models import Address
 
 from .models import Booking, BookingAssignment, BookingItem
+from .services import MAX_RESCHEDULES, can_change, can_reschedule
 
 TIMELINE_KEYS = ('on_the_way', 'arrived', 'in_progress', 'cash_collected', 'completed')
 
@@ -101,6 +102,12 @@ class BookingSerializer(serializers.ModelSerializer):
     start_photo_url = serializers.SerializerMethodField()
     completion_photo_url = serializers.SerializerMethodField()
     timeline = serializers.SerializerMethodField()
+    start_code = serializers.SerializerMethodField()
+    address_line = serializers.SerializerMethodField()
+    city_name = serializers.CharField(source='city.name', read_only=True)
+    can_cancel = serializers.SerializerMethodField()
+    can_reschedule = serializers.SerializerMethodField()
+    reschedules_left = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -116,6 +123,13 @@ class BookingSerializer(serializers.ModelSerializer):
             'start_photo_url',
             'completion_photo_url',
             'timeline',
+            'start_code',
+            'address_line',
+            'city_name',
+            'can_cancel',
+            'can_reschedule',
+            'reschedules_left',
+            'cancellation_reason',
             'partner_name',
             'partner_phone',
             'partner_average_rating',
@@ -155,6 +169,26 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def get_timeline(self, obj):
         return booking_timeline(obj, self._accepted_assignment(obj))
+
+    def get_start_code(self, obj):
+        started = obj.visit_status in {Booking.VisitStatus.IN_PROGRESS, Booking.VisitStatus.COMPLETED}
+        if obj.status != Booking.Status.CONFIRMED or started:
+            return ''
+        return obj.start_code
+
+    def get_address_line(self, obj):
+        address = obj.address
+        parts = [address.line1, address.line2, address.landmark, address.pincode]
+        return ', '.join(part for part in parts if part)
+
+    def get_can_cancel(self, obj):
+        return can_change(obj)
+
+    def get_can_reschedule(self, obj):
+        return can_reschedule(obj)
+
+    def get_reschedules_left(self, obj):
+        return max(MAX_RESCHEDULES - obj.reschedule_count, 0)
 
     def get_rating_stars(self, obj):
         rating = getattr(obj, 'rating', None)
@@ -231,3 +265,12 @@ class BookingPriceSummarySerializer(serializers.Serializer):
             'currency': 'INR',
             'savings': Decimal(base_price) - Decimal(discounted_price),
         }
+
+
+class BookingCancelSerializer(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=255)
+
+
+class BookingRescheduleSerializer(serializers.Serializer):
+    scheduled_date = serializers.DateField()
+    scheduled_time = serializers.TimeField()

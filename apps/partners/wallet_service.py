@@ -42,7 +42,7 @@ class InsufficientWalletError(ValueError):
 
 class WalletService:
     @staticmethod
-    def credit(*, partner: PartnerProfile, amount, note: str = '', created_by=None) -> WalletTransaction:
+    def credit(*, partner: PartnerProfile, amount, note: str = '', created_by=None, booking=None) -> WalletTransaction:
         credit_amount = money(amount)
         if credit_amount <= 0:
             raise ValueError('Wallet credit must be greater than zero.')
@@ -57,6 +57,7 @@ class WalletService:
                 balance_after=locked.wallet_balance,
                 note=note[:255],
                 created_by=created_by,
+                booking=booking,
             )
             partner.wallet_balance = locked.wallet_balance
             return txn

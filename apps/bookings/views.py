@@ -2,22 +2,25 @@ from rest_framework import generics, response, status
 
 from .models import Booking, BookingRating
 from .serializers import (
+    BookingCancelSerializer,
     BookingDraftSerializer,
     BookingPriceSummarySerializer,
     BookingRatingSerializer,
+    BookingRescheduleSerializer,
     BookingSerializer,
 )
 from .services import BookingService
 
 BOOKING_PREFETCH = ('items', 'payments', 'assignments__partner__user', 'status_logs')
+BOOKING_RELATED = ('rating', 'address', 'city')
 
 
 def _customer_bookings(user):
-    return Booking.objects.filter(customer=user).prefetch_related(*BOOKING_PREFETCH).select_related('rating')
+    return Booking.objects.filter(customer=user).prefetch_related(*BOOKING_PREFETCH).select_related(*BOOKING_RELATED)
 
 
 def _booking_response(request, booking_id, status_code=status.HTTP_200_OK):
-    booking = Booking.objects.prefetch_related(*BOOKING_PREFETCH).select_related('rating').get(pk=booking_id)
+    booking = Booking.objects.prefetch_related(*BOOKING_PREFETCH).select_related(*BOOKING_RELATED).get(pk=booking_id)
     return response.Response(BookingSerializer(booking, context={'request': request}).data, status=status_code)
 
 
@@ -98,3 +101,35 @@ class BookingRateView(generics.GenericAPIView):
             comment=serializer.validated_data.get('comment', ''),
         )
         return _booking_response(request, booking.pk, status.HTTP_201_CREATED)
+
+
+class BookingCancelView(generics.GenericAPIView):
+    serializer_class = BookingCancelSerializer
+
+    def post(self, request, pk):
+        booking = Booking.objects.filter(customer=request.user, pk=pk).first()
+        if booking is None:
+            return response.Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            BookingService.cancel_booking(booking=booking, reason=serializer.validated_data.get('reason', ''))
+        except ValueError as exc:
+            return response.Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return _booking_response(request, booking.pk)
+
+
+class BookingRescheduleView(generics.GenericAPIView):
+    serializer_class = BookingRescheduleSerializer
+
+    def post(self, request, pk):
+        booking = Booking.objects.filter(customer=request.user, pk=pk).first()
+        if booking is None:
+            return response.Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            BookingService.reschedule_booking(booking=booking, **serializer.validated_data)
+        except ValueError as exc:
+            return response.Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return _booking_response(request, booking.pk)

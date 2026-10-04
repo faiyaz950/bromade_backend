@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from django.utils import timezone
 
+from apps.bookings import notifications
 from apps.bookings.models import Booking, BookingAssignment, BookingStatusLog, default_visit_checklist
 from apps.payments.models import Payment
 
@@ -34,7 +35,7 @@ class VisitService:
             raise ValueError('This visit is not ready to start.')
 
     @classmethod
-    def advance(cls, *, partner, assignment_id: str, visit_status: str, photo=None) -> Booking:
+    def advance(cls, *, partner, assignment_id: str, visit_status: str, photo=None, start_code: str = '') -> Booking:
         if visit_status not in VISIT_FLOW:
             raise ValueError('Unknown visit status.')
         assignment = cls._accepted_assignment(partner=partner, assignment_id=assignment_id)
@@ -50,6 +51,9 @@ class VisitService:
             raise ValueError('Advance the visit one step at a time.')
         if visit_status == Booking.VisitStatus.COMPLETED:
             return cls.complete(partner=partner, assignment_id=assignment_id, photo=photo)
+        if visit_status == Booking.VisitStatus.IN_PROGRESS and booking.start_code:
+            if (start_code or '').strip() != booking.start_code:
+                raise ValueError('Wrong start code. Ask the customer for the 4-digit code shown in their app.')
 
         previous = booking.visit_status
         booking.visit_status = visit_status
@@ -64,6 +68,7 @@ class VisitService:
             to_status=visit_status,
             note=f'Visit updated by {partner.full_name}.',
         )
+        notifications.customer_visit_update(booking, partner, visit_status)
         return booking
 
     @classmethod
@@ -106,6 +111,7 @@ class VisitService:
                 to_status=Booking.Status.COMPLETED,
                 note='Booking completed.',
             )
+        notifications.customer_visit_update(booking, partner, Booking.VisitStatus.COMPLETED)
         return booking
 
     @staticmethod
@@ -141,4 +147,5 @@ class VisitService:
             to_status='cash_collected',
             note=f'Cash collected by {partner.full_name}.',
         )
+        notifications.customer_cash_received(booking, partner)
         return payment

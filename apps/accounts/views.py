@@ -1,6 +1,8 @@
 from rest_framework import generics, permissions, response, status
 
+from .models import UserDeviceToken
 from .serializers import (
+    DeviceTokenSerializer,
     EmailLoginSerializer,
     EmailRegisterSerializer,
     FirebaseAuthSerializer,
@@ -104,3 +106,24 @@ class MeView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+class DeviceTokenView(generics.GenericAPIView):
+    """Register (POST) or forget (DELETE) this phone's push token."""
+
+    serializer_class = DeviceTokenSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        UserDeviceToken.objects.update_or_create(
+            token=serializer.validated_data['token'],
+            defaults={'user': request.user, 'platform': serializer.validated_data['platform']},
+        )
+        return response.Response(status=status.HTTP_204_NO_CONTENT)
+
+    def delete(self, request):
+        token = request.data.get('token') or request.query_params.get('token')
+        if token:
+            UserDeviceToken.objects.filter(user=request.user, token=token).delete()
+        return response.Response(status=status.HTTP_204_NO_CONTENT)

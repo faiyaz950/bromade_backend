@@ -150,6 +150,9 @@ class AssignmentService:
                 to_status=Booking.AssignmentStatus.ACCEPTED,
                 note=f'Accepted by partner {partner.full_name}.',
             )
+            from apps.bookings.notifications import customer_partner_assigned
+
+            customer_partner_assigned(booking, partner)
             return assignment
 
     @staticmethod

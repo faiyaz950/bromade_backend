@@ -85,3 +85,17 @@ class OTPRequest(TimeStampedModel):
 
     def __str__(self):
         return f'{self.phone_number} ({self.code})'
+
+
+class UserDeviceToken(UUIDModel):
+    """Push token for a customer's phone."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='device_tokens')
+    token = models.CharField(max_length=255, unique=True)
+    platform = models.CharField(max_length=20, default='android')
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f'{self.user} · {self.platform}'

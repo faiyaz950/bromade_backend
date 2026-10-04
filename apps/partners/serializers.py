@@ -428,6 +428,7 @@ class PartnerVisitActionSerializer(serializers.Serializer):
     )
     checklist = serializers.ListField(child=serializers.DictField(), required=False)
     photo = serializers.ImageField(required=False)
+    start_code = serializers.CharField(required=False, allow_blank=True, max_length=4)
 
     def validate(self, attrs):
         visit_status = attrs.get('visit_status')

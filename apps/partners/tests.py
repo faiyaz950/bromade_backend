@@ -1,3 +1,4 @@
+from unittest import mock
 import json
 from datetime import timedelta
 
@@ -138,8 +139,12 @@ class PartnerAssignmentTests(APITestCase):
         self.assertEqual(accept_response.status_code, status.HTTP_200_OK)
         return assignment
 
-    def _advance(self, assignment_id, visit_status, checklist=None, photo=True):
+    def _advance(self, assignment_id, visit_status, checklist=None, photo=True, start_code=None):
         payload = {'visit_status': visit_status}
+        if visit_status == 'in_progress':
+            if start_code is None:
+                start_code = BookingAssignment.objects.get(pk=assignment_id).booking.start_code
+            payload['start_code'] = start_code
         if checklist is not None:
             payload['checklist'] = checklist
         if photo and visit_status in ('in_progress', 'completed'):
@@ -521,6 +526,134 @@ class PartnerAssignmentTests(APITestCase):
         self.assertTrue(detail.data['completion_photo_url'].startswith('http'))
         for key in ('booked', 'assigned', 'on_the_way', 'arrived', 'in_progress', 'cash_collected', 'completed'):
             self.assertIn(key, detail.data['timeline'])
+
+    def test_service_starts_only_with_customer_start_code(self):
+        booking_id = self._create_and_pay_booking()
+        assignment = self._accept_assignment(booking_id)
+        self._advance(assignment.id, 'on_the_way')
+        self._advance(assignment.id, 'arrived')
+
+        partner_view = self.client.get(f'/api/v1/partner/jobs/{booking_id}/')
+        self.assertNotIn('start_code', partner_view.data)
+
+        booking = Booking.objects.get(pk=booking_id)
+        wrong = '0000' if booking.start_code != '0000' else '1111'
+        rejected = self._advance(assignment.id, 'in_progress', start_code=wrong)
+        self.assertEqual(rejected.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('start code', rejected.data['detail'].lower())
+
+        self.client.force_authenticate(user=self.customer)
+        customer_view = self.client.get(f'/api/v1/bookings/{booking_id}/')
+        self.assertEqual(customer_view.data['start_code'], booking.start_code)
+
+        self.client.force_authenticate(user=assignment.partner.user)
+        started = self._advance(assignment.id, 'in_progress', start_code=booking.start_code)
+        self.assertEqual(started.status_code, status.HTTP_200_OK, started.data)
+
+        self.client.force_authenticate(user=self.customer)
+        after_start = self.client.get(f'/api/v1/bookings/{booking_id}/')
+        self.assertEqual(after_start.data['start_code'], '')
+
+    def test_customer_cancel_refunds_partner_commission(self):
+        booking_id = self._create_and_pay_booking()
+        assignment = self._accept_assignment(booking_id)
+        partner = assignment.partner
+        partner.refresh_from_db()
+        balance_after_accept = partner.wallet_balance
+
+        self.client.force_authenticate(user=self.customer)
+        detail = self.client.get(f'/api/v1/bookings/{booking_id}/')
+        self.assertTrue(detail.data['can_cancel'])
+        cancelled = self.client.post(
+            f'/api/v1/bookings/{booking_id}/cancel/', {'reason': 'Plans changed'}, format='json'
+        )
+        self.assertEqual(cancelled.status_code, status.HTTP_200_OK, cancelled.data)
+        self.assertEqual(cancelled.data['status'], 'cancelled')
+        self.assertFalse(cancelled.data['can_cancel'])
+
+        partner.refresh_from_db()
+        self.assertGreater(partner.wallet_balance, balance_after_accept)
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.status, BookingAssignment.Status.REASSIGNED)
+
+        again = self.client.post(f'/api/v1/bookings/{booking_id}/cancel/', {}, format='json')
+        self.assertEqual(again.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_cancel_or_reschedule_once_partner_is_on_the_way(self):
+        booking_id = self._create_and_pay_booking()
+        assignment = self._accept_assignment(booking_id)
+        self._advance(assignment.id, 'on_the_way')
+
+        self.client.force_authenticate(user=self.customer)
+        cancel = self.client.post(f'/api/v1/bookings/{booking_id}/cancel/', {}, format='json')
+        self.assertEqual(cancel.status_code, status.HTTP_400_BAD_REQUEST)
+        new_date = (timezone.localdate() + timedelta(days=4)).isoformat()
+        move = self.client.post(
+            f'/api/v1/bookings/{booking_id}/reschedule/',
+            {'scheduled_date': new_date, 'scheduled_time': '11:00'},
+            format='json',
+        )
+        self.assertEqual(move.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_customer_can_reschedule_twice(self):
+        booking_id = self._create_and_pay_booking()
+        self.client.force_authenticate(user=self.customer)
+        url = f'/api/v1/bookings/{booking_id}/reschedule/'
+
+        past = self.client.post(
+            url,
+            {'scheduled_date': (timezone.localdate() - timedelta(days=1)).isoformat(), 'scheduled_time': '10:00'},
+            format='json',
+        )
+        self.assertEqual(past.status_code, status.HTTP_400_BAD_REQUEST)
+
+        for days in (4, 5):
+            moved = self.client.post(
+                url,
+                {'scheduled_date': (timezone.localdate() + timedelta(days=days)).isoformat(), 'scheduled_time': '11:30'},
+                format='json',
+            )
+            self.assertEqual(moved.status_code, status.HTTP_200_OK, moved.data)
+        self.assertEqual(moved.data['reschedules_left'], 0)
+        self.assertFalse(moved.data['can_reschedule'])
+
+        third = self.client.post(
+            url,
+            {'scheduled_date': (timezone.localdate() + timedelta(days=6)).isoformat(), 'scheduled_time': '11:30'},
+            format='json',
+        )
+        self.assertEqual(third.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_push_goes_to_customer_and_partner_at_each_step(self):
+        from apps.accounts.models import UserDeviceToken
+
+        self.client.force_authenticate(user=self.customer)
+        registered = self.client.post(
+            '/api/v1/auth/device-token/', {'token': 'customer-phone', 'platform': 'ios'}, format='json'
+        )
+        self.assertEqual(registered.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertTrue(UserDeviceToken.objects.filter(user=self.customer, token='customer-phone').exists())
+
+        with mock.patch('apps.bookings.notifications.send_push') as push:
+            booking_id = self._create_and_pay_booking()
+            assignment = self._accept_assignment(booking_id)
+            self._advance(assignment.id, 'on_the_way')
+            titles = [call.kwargs['title'] for call in push.call_args_list]
+            self.assertIn('New job request', titles)
+            self.assertIn('Professional assigned', titles)
+            self.assertTrue(any('on the way' in title for title in titles))
+            customer_call = next(c for c in push.call_args_list if c.kwargs['title'] == 'Professional assigned')
+            self.assertEqual(list(customer_call.args[0]), ['customer-phone'])
+            self.assertEqual(customer_call.kwargs['data']['booking_id'], booking_id)
+
+        second_id = self._create_and_pay_booking()
+        self._accept_assignment(second_id)
+        with mock.patch('apps.bookings.notifications.send_push') as push:
+            self.client.force_authenticate(user=self.customer)
+            self.client.post(f'/api/v1/bookings/{second_id}/cancel/', {}, format='json')
+            cancelled = [c for c in push.call_args_list if c.kwargs['title'] == 'Job cancelled']
+            self.assertEqual(len(cancelled), 1)
+            self.assertIn('commission', cancelled[0].kwargs['body'])
 
     def test_unavailable_date_skips_partner_in_auto_assign(self):
         scheduled = timezone.localdate() + timedelta(days=1)
