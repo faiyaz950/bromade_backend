@@ -49,6 +49,7 @@ class AddressAPITests(APITestCase):
 
 class CoverageAPITests(APITestCase):
     def setUp(self):
+        City.objects.all().delete()
         self.pune = City.objects.create(
             name='Pune',
             slug='pune',

@@ -269,11 +269,7 @@ class Command(BaseCommand):
 
     def _seed_cities(self):
         city_defs = [
-            ('Bengaluru', 'bengaluru', 'Karnataka', 'Bangalore, Bengaluru Urban', 12.9716, 77.5946),
-            ('Mumbai', 'mumbai', 'Maharashtra', 'Bombay, Mumbai City', 19.0760, 72.8777),
-            ('Delhi', 'delhi', 'Delhi', 'New Delhi, Delhi NCR, NCR', 28.6139, 77.2090),
-            ('Hyderabad', 'hyderabad', 'Telangana', 'Secunderabad', 17.3850, 78.4867),
-            ('Pune', 'pune', 'Maharashtra', 'Poona, Pimpri Chinchwad', 18.5204, 73.8567),
+            ('Patna', 'patna', 'Bihar', 'Patliputra, Danapur, Phulwari Sharif, Khagaul, Patna Sadar', 25.5941, 85.1376),
         ]
         cities = []
         for name, slug, state, aliases, latitude, longitude in city_defs:
@@ -531,12 +527,12 @@ class Command(BaseCommand):
                 'city': city,
                 'contact_name': 'Priya Sharma',
                 'contact_phone': '+919876543210',
-                'line1': '12, Prestige Lakeside Apts',
-                'line2': 'Whitefield',
-                'landmark': 'Near Forum Shantiniketan',
-                'pincode': '560066',
-                'latitude': Decimal('12.969800'),
-                'longitude': Decimal('77.750000'),
+                'line1': '12, Ashiana Apartments',
+                'line2': 'Boring Road',
+                'landmark': 'Near AN College',
+                'pincode': '800001',
+                'latitude': Decimal('25.612700'),
+                'longitude': Decimal('85.117600'),
                 'is_default': True,
             },
         )
@@ -548,11 +544,11 @@ class Command(BaseCommand):
                 'contact_name': 'Priya Sharma',
                 'contact_phone': '+919876543210',
                 'line1': 'Bayti Hub, 4th Floor',
-                'line2': 'Indiranagar 100 Feet Road',
-                'landmark': 'Opposite metro station',
-                'pincode': '560038',
-                'latitude': Decimal('12.978400'),
-                'longitude': Decimal('77.640800'),
+                'line2': 'Fraser Road',
+                'landmark': 'Near Dak Bungalow Chauraha',
+                'pincode': '800001',
+                'latitude': Decimal('25.611200'),
+                'longitude': Decimal('85.141900'),
                 'is_default': False,
             },
         )
@@ -587,8 +583,8 @@ class Command(BaseCommand):
                 defaults={
                     'full_name': name,
                     'email': f'{phone[-4:]}@partners.bayti.in',
-                    'address_line': 'Bayti Partner Hub, Indiranagar',
-                    'pincode': '560038',
+                    'address_line': 'Bayti Partner Hub, Fraser Road, Patna',
+                    'pincode': '800001',
                     'years_experience': 5,
                     'aadhaar_number': '234567890123',
                     'pan_number': 'ABCDE1234F',
