@@ -1,0 +1,168 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'admin/css/support_chat.css' %}?v=1">
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a>
+  &rsaquo; <a href="{% url 'admin:customers_supportticket_changelist' %}">Support chats</a>
+  &rsaquo; {{ ticket.topic }}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="sc-layout">
+  <section class="sc-chat">
+    <header class="sc-head">
+      <div class="sc-avatar">{{ customer_name|slice:":1"|upper }}</div>
+      <div class="sc-head-text">
+        <h2>{{ customer_name }}</h2>
+        <p>{{ ticket.topic }}{% if customer_phone %} · {{ customer_phone }}{% endif %}</p>
+      </div>
+      <span id="sc-status" class="sc-status sc-status-{{ ticket.status }}">{{ ticket.get_status_display }}</span>
+      {% if can_reply %}
+      <form method="post" class="sc-head-action">
+        {% csrf_token %}
+        {% if ticket.status == 'open' %}
+          <button type="submit" name="action" value="resolve" class="sc-btn sc-btn-ghost">Mark resolved</button>
+        {% else %}
+          <button type="submit" name="action" value="reopen" class="sc-btn sc-btn-ghost">Reopen</button>
+        {% endif %}
+      </form>
+      {% endif %}
+    </header>
+
+    <div id="sc-thread" class="sc-thread" data-poll-url="{{ poll_url }}">
+      {% for m in chat_messages %}
+        <div class="sc-msg sc-msg-{{ m.sender }}" data-created="{{ m.created_at.isoformat }}">
+          <div class="sc-bubble">{{ m.body|linebreaksbr }}</div>
+          <div class="sc-time">
+            {% if m.sender == 'support' %}{% if m.author %}{{ m.author.first_name|default:"Support" }}{% else %}Support{% endif %} · {% endif %}{{ m.created_at|date:"d M, h:i A" }}
+          </div>
+        </div>
+      {% empty %}
+        <p class="sc-empty">No messages yet.</p>
+      {% endfor %}
+    </div>
+
+    {% if can_reply %}
+    <form method="post" class="sc-compose" id="sc-compose">
+      {% csrf_token %}
+      <div class="sc-quick">
+        {% for reply in quick_replies %}
+          <button type="button" class="sc-chip" data-text="{{ reply }}">{{ reply|truncatechars:42 }}</button>
+        {% endfor %}
+      </div>
+      <div class="sc-input-row">
+        <textarea name="body" id="sc-body" rows="2" maxlength="2000" placeholder="Type a reply… (Ctrl + Enter to send)" required></textarea>
+        <button type="submit" name="action" value="send" class="sc-btn sc-btn-primary">Send</button>
+      </div>
+    </form>
+    {% endif %}
+  </section>
+
+  <aside class="sc-side">
+    <div class="sc-card">
+      <h3>Customer</h3>
+      <dl>
+        <dt>Name</dt><dd>{{ customer_name }}</dd>
+        {% if customer_phone %}<dt>Phone</dt><dd><a href="tel:{{ customer_phone }}">{{ customer_phone }}</a></dd>{% endif %}
+        <dt>Started</dt><dd>{{ ticket.created_at|date:"d M Y, h:i A" }}</dd>
+      </dl>
+    </div>
+    {% if booking %}
+    <div class="sc-card">
+      <h3>Booking</h3>
+      <dl>
+        <dt>Service</dt><dd>{{ booking_item.package_name|default:"—" }}</dd>
+        <dt>Visit</dt><dd>{{ booking.scheduled_date|date:"d M Y" }}, {{ booking.scheduled_time|time:"h:i A" }}</dd>
+        <dt>Status</dt><dd>{{ booking.get_status_display }}{% if booking.visit_status %} · {{ booking.get_visit_status_display }}{% endif %}</dd>
+        <dt>Amount</dt><dd>₹{{ booking.total_amount }}</dd>
+      </dl>
+      <a class="sc-btn sc-btn-ghost sc-block" href="{{ booking_url }}">Open booking</a>
+    </div>
+    {% endif %}
+    {% if other_open %}
+    <div class="sc-card">
+      <h3>Other open chats</h3>
+      <ul class="sc-others">
+        {% for other in other_open %}
+          <li><a href="{% url 'admin:customers_supportticket_change' other.id %}">
+            <strong>{{ other.user.customer_profile.full_name|default:other.user.phone_number }}</strong>
+            <span>{{ other.topic }}</span>
+          </a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </aside>
+</div>
+
+<script>
+(function () {
+  var thread = document.getElementById('sc-thread');
+  var body = document.getElementById('sc-body');
+  var form = document.getElementById('sc-compose');
+  var statusEl = document.getElementById('sc-status');
+  var scrollDown = function () { thread.scrollTop = thread.scrollHeight; };
+  scrollDown();
+
+  document.querySelectorAll('.sc-chip').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      body.value = chip.dataset.text;
+      body.focus();
+    });
+  });
+  if (body) {
+    body.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && body.value.trim()) form.submit();
+    });
+  }
+
+  var lastCreated = function () {
+    var items = thread.querySelectorAll('.sc-msg');
+    return items.length ? items[items.length - 1].dataset.created : '';
+  };
+
+  var render = function (m) {
+    var empty = thread.querySelector('.sc-empty');
+    if (empty) empty.remove();
+    var wrap = document.createElement('div');
+    wrap.className = 'sc-msg sc-msg-' + m.sender;
+    wrap.dataset.created = m.created_at;
+    var bubble = document.createElement('div');
+    bubble.className = 'sc-bubble';
+    bubble.textContent = m.body;
+    var time = document.createElement('div');
+    time.className = 'sc-time';
+    time.textContent = (m.sender === 'support' ? 'Support · ' : '') + m.time;
+    wrap.appendChild(bubble);
+    wrap.appendChild(time);
+    thread.appendChild(wrap);
+  };
+
+  var poll = function () {
+    var url = thread.dataset.pollUrl + '?after=' + encodeURIComponent(lastCreated());
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        if (data.messages.length) {
+          data.messages.forEach(render);
+          scrollDown();
+        }
+        if (statusEl && data.status) {
+          statusEl.className = 'sc-status sc-status-' + data.status;
+          statusEl.textContent = data.status === 'resolved' ? 'Resolved' : 'Open';
+        }
+      })
+      .catch(function () {});
+  };
+  setInterval(poll, 5000);
+})();
+</script>
+{% endblock %}

@@ -843,7 +843,7 @@ class PartnerFeatureTests(PartnerAssignmentTests):
         self.client.force_authenticate(user=friend)
         self.assertEqual(self.client.get('/api/v1/coupons/referral/').data['rewarded_count'], 1)
 
-    def test_support_ticket_for_booking(self):
+    def test_support_chat_between_customer_and_admin(self):
         booking_id = self._create_and_pay_booking()
         self.client.force_authenticate(user=self.customer)
         created = self.client.post(
@@ -852,6 +852,39 @@ class PartnerFeatureTests(PartnerAssignmentTests):
             format='json',
         )
         self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        ticket_id = created.data['id']
+        self.assertEqual(created.data['messages'][0]['body'], 'Still waiting')
+
+        sent = self.client.post(f'/api/v1/support/tickets/{ticket_id}/messages/', {'body': 'Any update?'}, format='json')
+        self.assertEqual(sent.status_code, status.HTTP_201_CREATED)
+        empty = self.client.post(f'/api/v1/support/tickets/{ticket_id}/messages/', {'body': '  '}, format='json')
+        self.assertEqual(empty.status_code, status.HTTP_400_BAD_REQUEST)
+
+        admin_user = User.objects.create_superuser(phone_number='+919000000001', password='pw')
+        self.client.force_authenticate(user=None)
+        self.client.force_login(admin_user)
+        change_url = f'/admin/customers/supportticket/{ticket_id}/change/'
+        page = self.client.get(change_url)
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'Any update?')
+        reply = self.client.post(change_url, {'action': 'send', 'body': 'He reaches in 10 minutes.'})
+        self.assertEqual(reply.status_code, 302)
+        poll = self.client.get(f'/admin/customers/supportticket/{ticket_id}/poll/')
+        self.assertEqual(poll.json()['messages'][-1]['body'], 'He reaches in 10 minutes.')
+        self.client.post(change_url, {'action': 'resolve'})
+        self.assertContains(self.client.get('/admin/customers/supportticket/'), 'Partner is late')
+        self.assertContains(self.client.get('/admin/'), 'Support chats')
+        self.client.logout()
+
+        self.client.force_authenticate(user=self.customer)
+        self.assertEqual(self.client.get('/api/v1/support/unread/').data['count'], 2)
         listed = self.client.get(f'/api/v1/support/tickets/?booking={booking_id}')
-        self.assertEqual(len(listed.data), 1)
+        self.assertEqual(listed.data[0]['status'], 'resolved')
+        self.assertEqual(listed.data[0]['unread_count'], 2)
+        detail = self.client.get(f'/api/v1/support/tickets/{ticket_id}/')
+        self.assertEqual(len(detail.data['messages']), 4)
+        self.assertEqual(self.client.get('/api/v1/support/unread/').data['count'], 0)
+
+        self.client.post(f'/api/v1/support/tickets/{ticket_id}/messages/', {'body': 'Not fixed yet'}, format='json')
+        self.assertEqual(self.client.get(f'/api/v1/support/tickets/{ticket_id}/').data['status'], 'open')
         self.assertTrue(self.client.get('/api/v1/support/contact/').data['phone'])

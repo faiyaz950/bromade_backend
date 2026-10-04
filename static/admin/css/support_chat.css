@@ -1,0 +1,181 @@
+.sc-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 20px;
+  align-items: start;
+}
+
+.sc-chat {
+  background: #fff;
+  border: 1px solid #e3e7e5;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 230px);
+  min-height: 480px;
+  overflow: hidden;
+}
+
+.sc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #edf0ee;
+}
+
+.sc-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: #16172a;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.sc-head-text { flex: 1; min-width: 0; }
+.sc-head-text h2 { margin: 0; font-size: 16px; color: #16172a; }
+.sc-head-text p { margin: 2px 0 0; color: #6b7280; font-size: 12.5px; }
+.sc-head-action { margin: 0; }
+
+.sc-status {
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sc-status-open { background: #fff2db; color: #9a5a00; }
+.sc-status-resolved { background: #e6f5ec; color: #16794a; }
+
+.sc-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+  background: #f6f7f9;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sc-msg { display: flex; flex-direction: column; max-width: 72%; }
+.sc-msg-customer { align-self: flex-start; }
+.sc-msg-support { align-self: flex-end; align-items: flex-end; }
+
+.sc-bubble {
+  padding: 10px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.sc-msg-customer .sc-bubble {
+  background: #fff;
+  color: #16172a;
+  border: 1px solid #e6e8ec;
+  border-bottom-left-radius: 4px;
+}
+.sc-msg-support .sc-bubble {
+  background: #16172a;
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.sc-time { font-size: 11px; color: #8b8f9c; margin-top: 4px; }
+.sc-empty { color: #8b8f9c; text-align: center; margin: auto; }
+
+.sc-compose { border-top: 1px solid #edf0ee; padding: 12px 14px; margin: 0; }
+.sc-quick { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; }
+
+.sc-chip {
+  flex: none;
+  border: 1px solid #e3e7e5;
+  background: #f6f7f9;
+  color: #16172a;
+  border-radius: 99px;
+  padding: 5px 11px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sc-chip:hover { background: #eef0f3; }
+
+.sc-input-row { display: flex; gap: 10px; align-items: flex-end; }
+.sc-input-row textarea {
+  flex: 1;
+  resize: vertical;
+  min-height: 44px;
+  border: 1px solid #d6dbd8;
+  border-radius: 14px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+}
+
+.sc-btn {
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+  text-align: center;
+}
+.sc-btn-primary { background: #e8711a; color: #fff; }
+.sc-btn-primary:hover { background: #cf6213; }
+.sc-btn-ghost { background: #f1f3f2; color: #16172a !important; }
+.sc-btn-ghost:hover { background: #e5e9e7; }
+.sc-block { display: block; margin-top: 10px; }
+
+.sc-side { display: flex; flex-direction: column; gap: 14px; }
+.sc-card {
+  background: #fff;
+  border: 1px solid #e3e7e5;
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+.sc-card h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  background: none;
+  padding: 0;
+}
+.sc-card dl { margin: 0; display: grid; grid-template-columns: 80px 1fr; gap: 6px 10px; font-size: 13px; }
+.sc-card dt { color: #8b8f9c; font-weight: 600; }
+.sc-card dd { margin: 0; color: #16172a; }
+
+.sc-others { list-style: none; margin: 0; padding: 0; }
+.sc-others li { padding: 0; margin: 0 0 6px; list-style: none; }
+.sc-others a {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f6f7f9;
+  text-decoration: none;
+}
+.sc-others strong { display: block; color: #16172a; font-size: 13px; }
+.sc-others span { color: #6b7280; font-size: 12px; }
+
+.bl-chat-unread {
+  display: inline-block;
+  min-width: 22px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: #e8711a;
+  color: #fff;
+  font-weight: 800;
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 980px) {
+  .sc-layout { grid-template-columns: 1fr; }
+  .sc-msg { max-width: 88%; }
+}

@@ -1,5 +1,5 @@
 from django.contrib.admin import AdminSite
-from django.db.models import Count, Sum
+from django.db.models import Count, F, Q, Sum
 from django.urls import reverse
 from django.utils import timezone
 
@@ -28,7 +28,7 @@ class BrolyticsAdminSite(AdminSite):
         from apps.bookings.models import Booking, BookingAssignment
         from apps.catalog.models import Category, HomeHeroSlide, Service
         from apps.coupons.models import Coupon
-        from apps.customers.models import CustomerProfile
+        from apps.customers.models import CustomerProfile, SupportMessage, SupportTicket
         from apps.locations.models import Address, City
         from apps.partners.models import PartnerProfile
         from apps.payments.models import Payment
@@ -65,8 +65,24 @@ class BrolyticsAdminSite(AdminSite):
             .order_by('-created_at')[:6]
         )
 
+        unread_support = (
+            SupportMessage.objects.filter(sender=SupportMessage.Sender.CUSTOMER)
+            .filter(Q(ticket__admin_read_at__isnull=True) | Q(created_at__gt=F('ticket__admin_read_at')))
+            .values('ticket')
+            .distinct()
+            .count()
+        )
+        open_support = SupportTicket.objects.filter(status=SupportTicket.Status.OPEN).count()
+
         return {
             'cards': [
+                {
+                    'label': 'Support chats',
+                    'value': unread_support,
+                    'hint': f'chats waiting for a reply · {open_support} open',
+                    'tone': 'champagne' if unread_support else 'sage',
+                    'url': reverse('admin:customers_supportticket_changelist') + '?status__exact=open',
+                },
                 {
                     'label': 'Customer orders',
                     'value': bookings.count(),
