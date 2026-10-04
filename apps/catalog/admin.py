@@ -6,6 +6,7 @@ from .models import (
     Category,
     CityPackagePrice,
     HomeHeroSlide,
+    PackageInclusion,
     Service,
     ServiceInclusion,
     ServicePackage,
@@ -140,6 +141,15 @@ class ServiceAdmin(admin.ModelAdmin):
         )
 
 
+class PackageInclusionInline(admin.TabularInline):
+    model = PackageInclusion
+    extra = 3
+    fields = ('kind', 'text', 'sort_order')
+    ordering = ('kind', 'sort_order')
+    verbose_name = 'Include / exclude item'
+    verbose_name_plural = 'Package includes and does not include (shown when this package is selected)'
+
+
 @admin.register(ServicePackage)
 class ServicePackageAdmin(admin.ModelAdmin):
     list_display = ('name', 'service', 'base_price', 'discounted_price', 'duration_minutes', 'is_active')
@@ -147,6 +157,7 @@ class ServicePackageAdmin(admin.ModelAdmin):
     list_filter = ('service__category', 'is_active')
     autocomplete_fields = ('service',)
     prepopulated_fields = {'slug': ('name',)}
+    inlines = [PackageInclusionInline]
 
 
 @admin.register(CityPackagePrice)

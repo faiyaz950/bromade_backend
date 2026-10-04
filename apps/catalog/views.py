@@ -29,7 +29,7 @@ class CategoryListView(generics.ListAPIView):
             'services__process_steps',
             Prefetch(
                 'services__packages',
-                queryset=ServicePackage.objects.prefetch_related(_city_price_prefetch(city_id)),
+                queryset=ServicePackage.objects.prefetch_related('inclusions', _city_price_prefetch(city_id)),
             ),
         )
 
@@ -53,7 +53,7 @@ class PackageDetailView(generics.RetrieveAPIView):
         return (
             ServicePackage.objects.filter(is_active=True)
             .select_related('service__category')
-            .prefetch_related(_city_price_prefetch(city_id))
+            .prefetch_related('inclusions', _city_price_prefetch(city_id))
         )
 
     def get_serializer_context(self):

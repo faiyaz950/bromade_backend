@@ -24,10 +24,18 @@ class HomeHeroSlideSerializer(serializers.ModelSerializer):
         return absolute_media_url(self.context.get('request'), obj.resolved_image_url())
 
 
+def _inclusion_texts(obj, kind):
+    cached = getattr(obj, '_prefetched_objects_cache', {}).get('inclusions')
+    items = cached if cached is not None else obj.inclusions.all()
+    return [item.text for item in items if item.kind == kind]
+
+
 class ServicePackageSerializer(serializers.ModelSerializer):
     effective_price = serializers.SerializerMethodField()
     effective_discounted_price = serializers.SerializerMethodField()
     image_url = serializers.SerializerMethodField()
+    included_items = serializers.SerializerMethodField()
+    excluded_items = serializers.SerializerMethodField()
 
     class Meta:
         model = ServicePackage
@@ -42,7 +50,15 @@ class ServicePackageSerializer(serializers.ModelSerializer):
             'duration_minutes',
             'effective_price',
             'effective_discounted_price',
+            'included_items',
+            'excluded_items',
         )
+
+    def get_included_items(self, obj):
+        return _inclusion_texts(obj, 'included')
+
+    def get_excluded_items(self, obj):
+        return _inclusion_texts(obj, 'excluded')
 
     def _city_price(self, obj):
         city_id = self.context.get('city_id')
@@ -101,16 +117,11 @@ class ServiceSerializer(serializers.ModelSerializer):
             'packages',
         )
 
-    def _inclusion_texts(self, obj, kind):
-        cached = getattr(obj, '_prefetched_objects_cache', {}).get('inclusions')
-        items = cached if cached is not None else obj.inclusions.all()
-        return [item.text for item in items if item.kind == kind]
-
     def get_included_items(self, obj):
-        return self._inclusion_texts(obj, 'included')
+        return _inclusion_texts(obj, 'included')
 
     def get_excluded_items(self, obj):
-        return self._inclusion_texts(obj, 'excluded')
+        return _inclusion_texts(obj, 'excluded')
 
     def get_image_url(self, obj):
         return absolute_media_url(self.context.get('request'), obj.resolved_image_url())

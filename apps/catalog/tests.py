@@ -5,7 +5,15 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.accounts.models import User
-from apps.catalog.models import Category, HomeHeroSlide, Service, ServiceInclusion, ServicePackage, ServiceProcessStep
+from apps.catalog.models import (
+    Category,
+    HomeHeroSlide,
+    PackageInclusion,
+    Service,
+    ServiceInclusion,
+    ServicePackage,
+    ServiceProcessStep,
+)
 
 
 def _png_upload(name='service.png'):
@@ -77,6 +85,35 @@ class CatalogAPITests(APITestCase):
         package_response = self.client.get(f'/api/v1/catalog/packages/{self.package.id}/')
         self.assertEqual(package_response.status_code, status.HTTP_200_OK)
         self.assertEqual(package_response.data['name'], 'Classic Bathroom Clean')
+
+    def test_each_package_has_its_own_includes(self):
+        premium = ServicePackage.objects.create(
+            service=self.service,
+            name='Premium Bathroom Spa',
+            description='Package',
+            base_price=2200,
+            discounted_price=1899,
+        )
+        PackageInclusion.objects.create(package=premium, kind='included', text='Hard water stain removal')
+        PackageInclusion.objects.create(package=premium, kind='excluded', text='Plumbing repairs')
+
+        response = self.client.get('/api/v1/catalog/categories/')
+        packages = {p['name']: p for p in response.data[0]['services'][0]['packages']}
+        self.assertEqual(packages['Premium Bathroom Spa']['included_items'], ['Hard water stain removal'])
+        self.assertEqual(packages['Premium Bathroom Spa']['excluded_items'], ['Plumbing repairs'])
+        self.assertEqual(packages['Classic Bathroom Clean']['included_items'], [])
+
+        detail = self.client.get(f'/api/v1/catalog/packages/{premium.id}/')
+        self.assertEqual(detail.data['included_items'], ['Hard water stain removal'])
+
+    def test_seed_package_details_keeps_admin_edits(self):
+        from apps.catalog.package_details import seed_package_details
+
+        PackageInclusion.objects.create(package=self.package, kind='included', text='Custom admin row')
+        seed_package_details()
+        self.assertEqual(list(self.package.inclusions.values_list('text', flat=True)), ['Custom admin row'])
+        self.package.refresh_from_db()
+        self.assertEqual(self.package.description, 'Package')
 
     def test_home_slides_list_active_in_order(self):
         HomeHeroSlide.objects.create(

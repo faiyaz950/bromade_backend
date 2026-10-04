@@ -15,6 +15,7 @@ from apps.catalog.models import (
     ServicePackage,
     ServiceProcessStep,
 )
+from apps.catalog.package_details import seed_package_details
 from apps.customers.models import CustomerProfile
 from apps.locations.models import Address, City
 from apps.partners.models import PartnerCity, PartnerProfile, PartnerService
@@ -238,6 +239,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if Category.objects.exists() and not options['force']:
+            self._seed_package_details()
             self._seed_home_slides()
             self._seed_coupons()
             self._ensure_demo_partners()
@@ -251,6 +253,7 @@ class Command(BaseCommand):
 
         cities = self._seed_cities()
         packages = self._seed_catalog(cities)
+        self._seed_package_details()
         self._seed_home_slides()
         self._seed_coupons()
         demo_user, addresses = self._seed_demo_customer(cities[0])
@@ -472,6 +475,11 @@ class Command(BaseCommand):
                     'is_active': True,
                 },
             )
+
+    def _seed_package_details(self):
+        filled = seed_package_details()
+        if filled:
+            self.stdout.write(self.style.SUCCESS(f'Added includes/excludes to {filled} package(s).'))
 
     def _sync_inclusions(self, service, details):
         service.inclusions.all().delete()

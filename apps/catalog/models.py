@@ -191,6 +191,19 @@ class ServicePackage(UUIDModel):
         return self.name
 
 
+class PackageInclusion(UUIDModel):
+    package = models.ForeignKey(ServicePackage, on_delete=models.CASCADE, related_name='inclusions')
+    kind = models.CharField(max_length=16, choices=ServiceInclusion.Kind.choices)
+    text = models.CharField(max_length=255)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['kind', 'sort_order', 'created_at']
+
+    def __str__(self):
+        return f'{self.get_kind_display()}: {self.text}'
+
+
 class CityPackagePrice(UUIDModel):
     city = models.ForeignKey(City, on_delete=models.CASCADE, related_name='package_prices')
     package = models.ForeignKey(ServicePackage, on_delete=models.CASCADE, related_name='city_prices')
