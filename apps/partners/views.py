@@ -8,6 +8,7 @@ from rest_framework import generics, permissions, response, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from apps.bookings.models import Booking, BookingAssignment
+from apps.bookings.reviews import rating_summary, ratings_for_partner
 from apps.payments.models import Payment
 
 from .assignment_service import AssignmentService
@@ -172,8 +173,22 @@ class PartnerEarningsView(generics.GenericAPIView):
             payments__status=Payment.Status.PAID,
         ).distinct()
 
+        assigned_today = Booking.objects.filter(
+            assignments__partner=partner,
+            assignments__status=BookingAssignment.Status.ACCEPTED,
+            scheduled_date=today,
+        ).exclude(status=Booking.Status.CANCELLED).distinct()
+        last_7 = []
+        for offset in range(6, -1, -1):
+            day = today - timedelta(days=offset)
+            day_qs = completed.filter(scheduled_date=day)
+            last_7.append({'date': day.isoformat(), 'amount': _sum(day_qs), 'count': _count(day_qs)})
+
         return response.Response(
             {
+                'today_jobs': _count(assigned_today),
+                'today_pending': _count(assigned_today.exclude(status=Booking.Status.COMPLETED)),
+                'last_7_days': last_7,
                 'today_amount': _sum(completed.filter(scheduled_date=today)),
                 'today_count': _count(completed.filter(scheduled_date=today)),
                 'week_amount': _sum(completed.filter(scheduled_date__gte=week_start)),
@@ -392,3 +407,56 @@ class PartnerCashCollectView(generics.GenericAPIView):
         except ValueError as exc:
             return response.Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return response.Response(_job_payload(request, assignment.booking, assignment))
+
+
+class PartnerLocationView(generics.GenericAPIView):
+    permission_classes = [IsApprovedPartner]
+
+    def post(self, request, pk):
+        try:
+            latitude = float(request.data.get('latitude'))
+            longitude = float(request.data.get('longitude'))
+        except (TypeError, ValueError):
+            return response.Response({'detail': 'Send latitude and longitude.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            return response.Response({'detail': 'Invalid coordinates.'}, status=status.HTTP_400_BAD_REQUEST)
+        assignment = (
+            BookingAssignment.objects.select_related('booking')
+            .filter(pk=pk, partner=request.user.partner_profile, status=BookingAssignment.Status.ACCEPTED)
+            .first()
+        )
+        if assignment is None:
+            return response.Response({'detail': 'Assignment not found.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            VisitService.update_location(assignment, latitude, longitude)
+        except ValueError as exc:
+            return response.Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return response.Response({'ok': True})
+
+
+def _rating_tips(summary):
+    tips = []
+    average = summary['average']
+    if summary['count'] == 0:
+        return [
+            'Finish your first few jobs on time to build your rating.',
+            'Greet the customer, explain the work and show the result before leaving.',
+        ]
+    if average < 4.5:
+        tips.append('Call the customer when you start travelling so they know when to expect you.')
+    if summary['distribution'].get('1', 0) + summary['distribution'].get('2', 0) > 0:
+        tips.append('Low ratings usually come from delays or unclear pricing. Confirm the work before starting.')
+    tips.append('Take clear before and after photos. Customers trust jobs they can see.')
+    tips.append('Clean up the work area and ask the customer to check everything before you complete the job.')
+    if average >= 4.8:
+        tips.insert(0, 'Excellent work! Keep it up to get more job requests.')
+    return tips
+
+
+class PartnerRatingsView(generics.GenericAPIView):
+    permission_classes = [IsApprovedPartner]
+
+    def get(self, request):
+        summary = rating_summary(ratings_for_partner(request.user.partner_profile), request=request)
+        summary['tips'] = _rating_tips(summary)
+        return response.Response(summary)

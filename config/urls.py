@@ -18,6 +18,7 @@ urlpatterns = [
     path('api/v1/coupons/', include('apps.coupons.urls')),
     path('api/v1/payments/', include('apps.payments.urls')),
     path('api/v1/partner/', include('apps.partners.urls')),
+    path('api/v1/support/', include('apps.customers.urls')),
     path('media/<path:path>', serve, {'document_root': settings.MEDIA_ROOT}),
 ]
 

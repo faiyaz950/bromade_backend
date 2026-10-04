@@ -185,3 +185,8 @@ PAYMENT_GATEWAY = config('PAYMENT_GATEWAY', default='mock_razorpay')
 FIREBASE_PROJECT_ID = config('FIREBASE_PROJECT_ID', default='homeservice-37e32')
 FIREBASE_SERVICE_ACCOUNT_FILE = config('FIREBASE_SERVICE_ACCOUNT_FILE', default='')
 FIREBASE_SERVICE_ACCOUNT_JSON = config('FIREBASE_SERVICE_ACCOUNT_JSON', default='')
+
+SUPPORT_PHONE = config('SUPPORT_PHONE', default='+918340715516')
+SUPPORT_WHATSAPP = config('SUPPORT_WHATSAPP', default='+918340715516')
+SUPPORT_EMAIL = config('SUPPORT_EMAIL', default='support@brolyticstechnologies.com')
+SUPPORT_HOURS = config('SUPPORT_HOURS', default='9 AM – 9 PM, all days')

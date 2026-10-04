@@ -79,6 +79,9 @@ class Booking(UUIDModel):
         help_text='Customer shares this code with the partner to start the service.',
     )
     reschedule_count = models.PositiveSmallIntegerField(default=0)
+    partner_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    partner_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    partner_location_at = models.DateTimeField(null=True, blank=True)
     cancellation_reason = models.CharField(max_length=255, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
 

@@ -1,5 +1,7 @@
 from django.db.models import Prefetch
-from rest_framework import generics
+from rest_framework import generics, permissions, response
+
+from apps.bookings.reviews import rating_summary, ratings_for_service
 
 from .models import Category, CityPackagePrice, HomeHeroSlide, ServicePackage
 from .serializers import CategorySerializer, HomeHeroSlideSerializer, PackageDetailSerializer
@@ -58,3 +60,12 @@ class PackageDetailView(generics.RetrieveAPIView):
         context = super().get_serializer_context()
         context['city_id'] = self.request.query_params.get('city_id')
         return context
+
+
+class ServiceReviewsView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, id):
+        return response.Response(
+            rating_summary(ratings_for_service(id), request=request, limit=15, with_photos=True)
+        )

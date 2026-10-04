@@ -112,6 +112,20 @@ class VisitService:
                 note='Booking completed.',
             )
         notifications.customer_visit_update(booking, partner, Booking.VisitStatus.COMPLETED)
+        from apps.coupons.referrals import ReferralService
+
+        ReferralService.on_booking_completed(booking)
+        return booking
+
+    @staticmethod
+    def update_location(assignment: BookingAssignment, latitude, longitude) -> Booking:
+        booking = assignment.booking
+        if booking.visit_status not in (Booking.VisitStatus.ON_THE_WAY, Booking.VisitStatus.ARRIVED):
+            raise ValueError('Location is only shared while you are on the way.')
+        booking.partner_latitude = round(latitude, 6)
+        booking.partner_longitude = round(longitude, 6)
+        booking.partner_location_at = timezone.now()
+        booking.save(update_fields=['partner_latitude', 'partner_longitude', 'partner_location_at', 'updated_at'])
         return booking
 
     @staticmethod

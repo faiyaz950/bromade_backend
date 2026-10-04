@@ -9,6 +9,8 @@ from .views import (
     PartnerJobDetailView,
     PartnerJobListView,
     PartnerJobRejectView,
+    PartnerLocationView,
+    PartnerRatingsView,
     PartnerMeView,
     PartnerRegisterView,
     PartnerUnavailableDateDeleteView,
@@ -22,6 +24,7 @@ urlpatterns = [
     path('me/device-token/', PartnerDeviceTokenView.as_view(), name='partner-device-token'),
     path('catalog/', PartnerCatalogView.as_view(), name='partner-catalog'),
     path('earnings/', PartnerEarningsView.as_view(), name='partner-earnings'),
+    path('ratings/', PartnerRatingsView.as_view(), name='partner-ratings'),
     path('unavailable-dates/', PartnerUnavailableDateListView.as_view(), name='partner-unavailable-dates'),
     path(
         'unavailable-dates/<uuid:pk>/',
@@ -33,6 +36,7 @@ urlpatterns = [
     path('jobs/assignments/<uuid:pk>/accept/', PartnerJobAcceptView.as_view(), name='partner-job-accept'),
     path('jobs/assignments/<uuid:pk>/reject/', PartnerJobRejectView.as_view(), name='partner-job-reject'),
     path('jobs/assignments/<uuid:pk>/visit/', PartnerVisitAdvanceView.as_view(), name='partner-job-visit'),
+    path('jobs/assignments/<uuid:pk>/location/', PartnerLocationView.as_view(), name='partner-job-location'),
     path(
         'jobs/assignments/<uuid:pk>/collect-cash/',
         PartnerCashCollectView.as_view(),

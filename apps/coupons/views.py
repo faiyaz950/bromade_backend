@@ -4,7 +4,8 @@ from apps.catalog.models import ServicePackage
 from apps.locations.models import City
 
 from .serializers import CouponListQuerySerializer, CouponOfferSerializer, CouponValidateSerializer
-from .services import CouponService
+from .referrals import ReferralService
+from .services import CouponService, CouponValidationError
 
 
 def _first_error(errors):
@@ -59,3 +60,17 @@ class CouponListView(generics.GenericAPIView):
             city = City.objects.filter(pk=city_id).first()
         offers = CouponService.list_offers(user=request.user, package=package, city=city)
         return response.Response(CouponOfferSerializer(offers, many=True).data)
+
+
+class ReferralView(generics.GenericAPIView):
+    def get(self, request):
+        return response.Response(ReferralService.summary(request.user))
+
+
+class ReferralApplyView(generics.GenericAPIView):
+    def post(self, request):
+        try:
+            ReferralService.apply(request.user, request.data.get('code', ''))
+        except CouponValidationError as exc:
+            return response.Response({'detail': exc.message}, status=status.HTTP_400_BAD_REQUEST)
+        return response.Response(ReferralService.summary(request.user))

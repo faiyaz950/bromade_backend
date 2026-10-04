@@ -6,7 +6,7 @@ from django.utils.html import format_html
 from apps.bookings.models import Booking
 from apps.locations.models import Address
 
-from .models import CustomerProfile
+from .models import CustomerProfile, SupportTicket
 
 
 @admin.register(CustomerProfile)
@@ -97,3 +97,14 @@ class CustomerProfileAdmin(admin.ModelAdmin):
             format_html(''.join(rows)),
             all_url,
         )
+
+
+
+@admin.register(SupportTicket)
+class SupportTicketAdmin(admin.ModelAdmin):
+    list_display = ('topic', 'user', 'booking', 'status', 'created_at')
+    list_filter = ('status', 'created_at')
+    list_editable = ('status',)
+    search_fields = ('topic', 'message', 'user__phone_number')
+    raw_id_fields = ('user', 'booking')
+    readonly_fields = ('created_at', 'updated_at')

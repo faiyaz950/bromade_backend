@@ -1,5 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.catalog.models import CityPackagePrice
@@ -77,8 +78,11 @@ class CouponService:
     @staticmethod
     def list_offers(*, user, package, city=None, quantity=1):
         today = timezone.localdate()
+        owner_filter = Q(owner__isnull=True)
+        if user is not None and getattr(user, 'is_authenticated', False):
+            owner_filter |= Q(owner=user)
         qs = (
-            Coupon.objects.filter(is_active=True)
+            Coupon.objects.filter(owner_filter, is_active=True)
             .prefetch_related('services', 'packages', 'cities')
             .order_by('code')
         )
@@ -120,6 +124,10 @@ class CouponService:
                 raise CouponValidationError(
                     'This coupon code was not found. Check the spelling matches the admin code.'
                 )
+
+        if coupon.owner_id is not None:
+            if user is None or not getattr(user, 'is_authenticated', False) or user.pk != coupon.owner_id:
+                raise CouponValidationError('This coupon code was not found.')
 
         if not coupon.is_active:
             raise CouponValidationError('This coupon is turned off.')

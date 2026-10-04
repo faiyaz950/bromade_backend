@@ -2,7 +2,7 @@ from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Coupon, CouponRedemption
+from .models import Coupon, CouponRedemption, Referral, ReferralCode
 
 
 class CouponAdminForm(forms.ModelForm):
@@ -199,3 +199,19 @@ class CouponRedemptionAdmin(admin.ModelAdmin):
             f'/admin/bookings/booking/{obj.booking_id}/change/',
             str(obj.booking_id)[:8],
         )
+
+
+
+@admin.register(ReferralCode)
+class ReferralCodeAdmin(admin.ModelAdmin):
+    list_display = ('code', 'user', 'created_at')
+    search_fields = ('code', 'user__phone_number', 'user__first_name')
+    raw_id_fields = ('user',)
+
+
+@admin.register(Referral)
+class ReferralAdmin(admin.ModelAdmin):
+    list_display = ('referrer', 'referee', 'referee_coupon', 'referrer_coupon', 'rewarded_at', 'created_at')
+    list_filter = ('rewarded_at',)
+    search_fields = ('referrer__phone_number', 'referee__phone_number')
+    raw_id_fields = ('referrer', 'referee', 'referee_coupon', 'referrer_coupon')

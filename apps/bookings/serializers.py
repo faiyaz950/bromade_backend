@@ -1,7 +1,8 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db.models import Avg, Count
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.catalog.models import CityPackagePrice, ServicePackage
@@ -108,6 +109,8 @@ class BookingSerializer(serializers.ModelSerializer):
     can_cancel = serializers.SerializerMethodField()
     can_reschedule = serializers.SerializerMethodField()
     reschedules_left = serializers.SerializerMethodField()
+    address_location = serializers.SerializerMethodField()
+    partner_location = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -126,6 +129,8 @@ class BookingSerializer(serializers.ModelSerializer):
             'start_code',
             'address_line',
             'city_name',
+            'address_location',
+            'partner_location',
             'can_cancel',
             'can_reschedule',
             'reschedules_left',
@@ -180,6 +185,24 @@ class BookingSerializer(serializers.ModelSerializer):
         address = obj.address
         parts = [address.line1, address.line2, address.landmark, address.pincode]
         return ', '.join(part for part in parts if part)
+
+    def get_address_location(self, obj):
+        address = obj.address
+        if address.latitude is None or address.longitude is None:
+            return None
+        return {'latitude': float(address.latitude), 'longitude': float(address.longitude)}
+
+    def get_partner_location(self, obj):
+        live = obj.visit_status in {Booking.VisitStatus.ON_THE_WAY, Booking.VisitStatus.ARRIVED}
+        if not live or obj.partner_latitude is None or obj.partner_location_at is None:
+            return None
+        if timezone.now() - obj.partner_location_at > timedelta(minutes=30):
+            return None
+        return {
+            'latitude': float(obj.partner_latitude),
+            'longitude': float(obj.partner_longitude),
+            'updated_at': obj.partner_location_at.isoformat(),
+        }
 
     def get_can_cancel(self, obj):
         return can_change(obj)

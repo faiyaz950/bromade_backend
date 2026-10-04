@@ -83,6 +83,15 @@ class Coupon(UUIDModel):
         help_text='Leave empty to allow all packages.',
     )
 
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='personal_coupons',
+        help_text='Set for referral rewards. Only this customer can see and use the code.',
+    )
+
     class Meta:
         ordering = ['-created_at']
 
@@ -150,3 +159,25 @@ class CouponRedemption(UUIDModel):
 
     def __str__(self):
         return f'{self.coupon.code} on booking {self.booking_id}'
+
+
+class ReferralCode(UUIDModel):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='referral_code')
+    code = models.CharField(max_length=12, unique=True)
+
+    def __str__(self):
+        return self.code
+
+
+class Referral(UUIDModel):
+    referrer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='referrals_made')
+    referee = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='referred_by')
+    referee_coupon = models.ForeignKey(Coupon, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    referrer_coupon = models.ForeignKey(Coupon, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    rewarded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.referrer} → {self.referee}'

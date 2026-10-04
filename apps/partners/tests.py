@@ -756,3 +756,102 @@ class PartnerAssignmentTests(APITestCase):
 
         with self.assertRaises(ValueError):
             WalletService.debit(partner=self.partner, amount=Decimal('5000.00'))
+
+
+class PartnerFeatureTests(PartnerAssignmentTests):
+    def _complete_job(self, booking_id):
+        assignment = self._accept_assignment(booking_id)
+        for step in ('on_the_way', 'arrived', 'in_progress', 'completed'):
+            response = self._advance(assignment.id, step)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        return assignment
+
+    def test_live_location_only_while_travelling(self):
+        booking_id = self._create_and_pay_booking()
+        assignment = self._accept_assignment(booking_id)
+        url = f'/api/v1/partner/jobs/assignments/{assignment.id}/location/'
+        early = self.client.post(url, {'latitude': 19.1, 'longitude': 72.9}, format='json')
+        self.assertEqual(early.status_code, status.HTTP_409_CONFLICT)
+
+        self._advance(assignment.id, 'on_the_way')
+        ok = self.client.post(url, {'latitude': 19.117, 'longitude': 72.906}, format='json')
+        self.assertEqual(ok.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(user=self.customer)
+        detail = self.client.get(f'/api/v1/bookings/{booking_id}/')
+        self.assertAlmostEqual(detail.data['partner_location']['latitude'], 19.117)
+
+        self.client.force_authenticate(user=self.partner_user)
+        self._advance(assignment.id, 'arrived')
+        self._advance(assignment.id, 'in_progress')
+        self.client.force_authenticate(user=self.customer)
+        detail = self.client.get(f'/api/v1/bookings/{booking_id}/')
+        self.assertIsNone(detail.data['partner_location'])
+
+    def test_ratings_summary_and_service_reviews(self):
+        booking_id = self._create_and_pay_booking()
+        self._complete_job(booking_id)
+        BookingRating.objects.create(booking_id=booking_id, stars=5, comment='Spotless!')
+
+        self.client.force_authenticate(user=self.partner_user)
+        ratings = self.client.get('/api/v1/partner/ratings/')
+        self.assertEqual(ratings.status_code, status.HTTP_200_OK)
+        self.assertEqual(ratings.data['count'], 1)
+        self.assertEqual(ratings.data['distribution']['5'], 1)
+        self.assertTrue(ratings.data['tips'])
+
+        self.client.force_authenticate(user=self.customer)
+        reviews = self.client.get(f'/api/v1/catalog/services/{self.service.id}/reviews/')
+        self.assertEqual(reviews.status_code, status.HTTP_200_OK)
+        self.assertEqual(reviews.data['average'], 5.0)
+        self.assertEqual(reviews.data['reviews'][0]['comment'], 'Spotless!')
+        self.assertTrue(reviews.data['reviews'][0]['photo_url'])
+
+    def test_earnings_include_weekly_series(self):
+        self.client.force_authenticate(user=self.partner_user)
+        earnings = self.client.get('/api/v1/partner/earnings/')
+        self.assertEqual(earnings.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(earnings.data['last_7_days']), 7)
+        self.assertIn('today_jobs', earnings.data)
+
+    def test_referral_rewards_both_sides(self):
+        from apps.coupons.models import Coupon
+
+        friend = User.objects.create_user(phone_number='+919777777777', first_name='Asha')
+        self.client.force_authenticate(user=friend)
+        code = self.client.get('/api/v1/coupons/referral/').data['code']
+
+        self.client.force_authenticate(user=self.customer)
+        own = self.client.post('/api/v1/coupons/referral/apply/', {'code': 'NOPE1234'}, format='json')
+        self.assertEqual(own.status_code, status.HTTP_400_BAD_REQUEST)
+        applied = self.client.post('/api/v1/coupons/referral/apply/', {'code': code}, format='json')
+        self.assertEqual(applied.status_code, status.HTTP_200_OK, applied.data)
+        self.assertFalse(applied.data['can_apply'])
+        welcome = applied.data['coupons'][0]['code']
+
+        self.client.force_authenticate(user=friend)
+        stolen = self.client.post(
+            '/api/v1/coupons/validate/',
+            {'code': welcome, 'package_id': str(self.package.id)},
+            format='json',
+        )
+        self.assertEqual(stolen.status_code, status.HTTP_400_BAD_REQUEST)
+
+        booking_id = self._create_and_pay_booking()
+        self._complete_job(booking_id)
+        self.assertTrue(Coupon.objects.filter(owner=friend, discount_value=100).exists())
+        self.client.force_authenticate(user=friend)
+        self.assertEqual(self.client.get('/api/v1/coupons/referral/').data['rewarded_count'], 1)
+
+    def test_support_ticket_for_booking(self):
+        booking_id = self._create_and_pay_booking()
+        self.client.force_authenticate(user=self.customer)
+        created = self.client.post(
+            '/api/v1/support/tickets/',
+            {'booking_id': booking_id, 'topic': 'Partner is late', 'message': 'Still waiting'},
+            format='json',
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        listed = self.client.get(f'/api/v1/support/tickets/?booking={booking_id}')
+        self.assertEqual(len(listed.data), 1)
+        self.assertTrue(self.client.get('/api/v1/support/contact/').data['phone'])
