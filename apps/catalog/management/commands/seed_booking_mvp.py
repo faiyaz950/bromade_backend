@@ -441,6 +441,7 @@ class Command(BaseCommand):
             self.stdout.write(f'Coupon {coupon.code} already exists.')
 
     def _seed_home_slides(self):
+        HomeHeroSlide.objects.filter(title='Kitchen, bathroom, whole home').update(is_active=False)
         slides = [
             (
                 'Trusted home care',
@@ -449,9 +450,9 @@ class Command(BaseCommand):
                 0,
             ),
             (
-                'Kitchen, bathroom, whole home',
+                'Pest control & painting',
                 'Clear prices before you confirm.',
-                IMAGES['kitchen'],
+                IMAGES['pest'],
                 1,
             ),
             (
