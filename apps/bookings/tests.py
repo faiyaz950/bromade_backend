@@ -1,4 +1,5 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django.utils import timezone
 from rest_framework import status
@@ -97,7 +98,7 @@ class BookingAPITests(APITestCase):
         response = self._book(3)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         booking = Booking.objects.get(pk=response.data['id'])
-        self.assertEqual(booking.total_amount, 999 * 3)
+        self.assertEqual(booking.total_amount, Decimal('3146.85'))
         item = booking.items.get()
         self.assertEqual(item.quantity, 3)
         self.assertEqual(item.line_total, 999 * 3)

@@ -349,7 +349,7 @@ class PartnerAssignmentTests(APITestCase):
             '/api/v1/partner/me/register/',
             {
                 'full_name': 'Harsh Kumar',
-                'email': 'harsh@bayti.in',
+                'email': 'harsh@demess.in',
                 'address_line': '14 MG Road',
                 'pincode': '400076',
                 'years_experience': 3,
@@ -719,7 +719,7 @@ class PartnerAssignmentTests(APITestCase):
         booking_id = self._create_and_pay_booking()
         booking = Booking.objects.get(pk=booking_id)
         assignment = BookingAssignment.objects.get(booking_id=booking_id, partner=self.partner)
-        needed = commission_amount(booking.total_amount)
+        needed = commission_amount(booking.amount_before_tax)
         before = self.partner.wallet_balance
 
         self.client.force_authenticate(user=self.partner_user)

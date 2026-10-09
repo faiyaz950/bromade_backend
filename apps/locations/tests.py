@@ -46,6 +46,70 @@ class AddressAPITests(APITestCase):
         self.assertTrue(second.is_default)
         self.assertEqual(Address.objects.filter(user=self.user, is_default=True).count(), 1)
 
+    def _payload(self, **overrides):
+        payload = {
+            'label': 'Home',
+            'contact_name': 'Test User',
+            'contact_phone': '+919222222222',
+            'line1': 'Flat 4, Baner Road',
+            'pincode': '411045',
+            'city_id': str(self.city.id),
+            'is_default': True,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_create_address_saves_map_pin(self):
+        response = self.client.post(
+            '/api/v1/addresses/',
+            self._payload(latitude=18.559123456789, longitude=73.786543219876),
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertAlmostEqual(response.data['latitude'], 18.559123, places=6)
+        self.assertAlmostEqual(response.data['longitude'], 73.786543, places=6)
+
+    def test_pin_outside_city_radius_is_rejected(self):
+        self.city.latitude = 18.5204
+        self.city.longitude = 73.8567
+        self.city.service_radius_km = 40
+        self.city.save()
+        response = self.client.post(
+            '/api/v1/addresses/',
+            self._payload(latitude=19.0760, longitude=72.8777),
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('latitude', response.data)
+
+    def test_latitude_without_longitude_is_rejected(self):
+        response = self.client.post(
+            '/api/v1/addresses/',
+            self._payload(latitude=18.55),
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_pin_can_be_added_to_existing_address(self):
+        address = Address.objects.create(
+            user=self.user,
+            city=self.city,
+            label='Home',
+            contact_name='Test User',
+            contact_phone='+919222222222',
+            line1='Baner Road',
+            pincode='411045',
+        )
+        response = self.client.patch(
+            f'/api/v1/addresses/{address.id}/',
+            {'latitude': 18.559, 'longitude': 73.7865},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        address.refresh_from_db()
+        self.assertEqual(float(address.latitude), 18.559)
+        self.assertEqual(float(address.longitude), 73.7865)
+
 
 class CoverageAPITests(APITestCase):
     def setUp(self):

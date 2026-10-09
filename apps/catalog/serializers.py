@@ -99,6 +99,9 @@ class ServiceSerializer(serializers.ModelSerializer):
     included_items = serializers.SerializerMethodField()
     excluded_items = serializers.SerializerMethodField()
     process_steps = ServiceProcessStepSerializer(many=True, read_only=True)
+    rating_average = serializers.SerializerMethodField()
+    rating_count = serializers.SerializerMethodField()
+    recent_bookings = serializers.SerializerMethodField()
 
     class Meta:
         model = Service
@@ -115,7 +118,22 @@ class ServiceSerializer(serializers.ModelSerializer):
             'excluded_items',
             'process_steps',
             'packages',
+            'rating_average',
+            'rating_count',
+            'recent_bookings',
         )
+
+    def _stats(self, obj):
+        return self.context.get('service_stats', {}).get(obj.id, {})
+
+    def get_rating_average(self, obj):
+        return self._stats(obj).get('rating_average')
+
+    def get_rating_count(self, obj):
+        return self._stats(obj).get('rating_count', 0)
+
+    def get_recent_bookings(self, obj):
+        return self._stats(obj).get('recent_bookings', 0)
 
     def get_included_items(self, obj):
         return _inclusion_texts(obj, 'included')

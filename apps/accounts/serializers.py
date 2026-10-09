@@ -3,27 +3,13 @@ from rest_framework import serializers
 from .models import User
 from .services.firebase import verify_id_token
 from .services.otp import OTPService
+from .services.phone import normalize_phone_number
 from .services.session import (
     issue_auth_payload,
     issue_email_login_payload,
     issue_email_register_payload,
     issue_firebase_auth_payload,
 )
-
-
-def normalize_phone_number(value):
-    if value is None:
-        return None
-    raw = str(value).strip().replace(' ', '').replace('-', '')
-    if not raw:
-        return None
-    if raw.startswith('+'):
-        return raw
-    if raw.startswith('91') and len(raw) == 12:
-        return f'+{raw}'
-    if raw.isdigit() and len(raw) == 10:
-        return f'+91{raw}'
-    return f'+{raw}'
 
 
 class OTPRequestSerializer(serializers.Serializer):
@@ -86,31 +72,39 @@ class FirebaseAuthSerializer(serializers.Serializer):
 
 
 class EmailRegisterSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    phone_number = serializers.CharField(max_length=20)
     password = serializers.CharField(min_length=8, max_length=128, write_only=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
     first_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+
+    def validate_phone_number(self, value):
+        phone = normalize_phone_number(value)
+        if not phone or not User.phone_regex.regex.match(phone):
+            raise serializers.ValidationError('Enter a valid 10-digit mobile number.')
+        return phone
 
     def create(self, validated_data):
         try:
             return issue_email_register_payload(
-                email=validated_data['email'],
+                phone_number=validated_data['phone_number'],
                 password=validated_data['password'],
+                email=validated_data.get('email', ''),
                 first_name=validated_data.get('first_name', ''),
                 last_name=validated_data.get('last_name', ''),
             )
         except ValueError as exc:
-            raise serializers.ValidationError({'email': str(exc)}) from exc
+            raise serializers.ValidationError({'phone_number': str(exc)}) from exc
 
 
 class EmailLoginSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    identifier = serializers.CharField(max_length=254)
     password = serializers.CharField(max_length=128, write_only=True)
 
     def create(self, validated_data):
         try:
             return issue_email_login_payload(
-                email=validated_data['email'],
+                identifier=validated_data['identifier'],
                 password=validated_data['password'],
             )
         except ValueError as exc:

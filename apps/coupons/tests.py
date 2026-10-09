@@ -76,7 +76,7 @@ class CouponAPITests(APITestCase):
         self.assertEqual(booking_response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(booking_response.data['coupon_code'], 'SAVE100')
         self.assertEqual(Decimal(booking_response.data['discount_amount']), Decimal('100.00'))
-        self.assertEqual(Decimal(booking_response.data['total_amount']), Decimal('900.00'))
+        self.assertEqual(Decimal(booking_response.data['total_amount']), Decimal('945.00'))
         self.assertEqual(CouponRedemption.objects.count(), 1)
 
         payment = self.client.post(
@@ -85,7 +85,7 @@ class CouponAPITests(APITestCase):
             format='json',
         )
         self.assertEqual(payment.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Decimal(str(payment.data.get('amount', '900'))), Decimal('900.00'))
+        self.assertEqual(Decimal(str(payment.data.get('amount', '945'))), Decimal('945.00'))
 
     def test_percentage_coupon_respects_max_discount(self):
         Coupon.objects.create(
@@ -160,7 +160,7 @@ class CouponAPITests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         booking = Booking.objects.get(pk=response.data['id'])
         self.assertEqual(booking.discount_amount, Decimal('0.00'))
-        self.assertEqual(booking.total_amount, Decimal('1000.00'))
+        self.assertEqual(booking.total_amount, Decimal('1050.00'))
         self.assertEqual(booking.coupon_code, '')
 
     def test_all_services_coupon_works_on_any_service(self):

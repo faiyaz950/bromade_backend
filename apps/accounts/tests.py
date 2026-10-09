@@ -143,6 +143,7 @@ class AuthAPITests(APITestCase):
             {
                 'email': 'customer@example.com',
                 'password': 'secretpass',
+                'phone_number': '9876543210',
                 'first_name': 'Bro',
                 'last_name': 'User',
             },
@@ -152,23 +153,63 @@ class AuthAPITests(APITestCase):
         self.assertIn('access', register.data)
         self.assertTrue(register.data['is_new_user'])
         self.assertEqual(register.data['user']['email'], 'customer@example.com')
+        self.assertEqual(register.data['user']['phone_number'], '+919876543210')
         self.assertEqual(register.data['user']['full_name'], 'Bro User')
 
         login = self.client.post(
             '/api/v1/auth/login/',
-            {'email': 'customer@example.com', 'password': 'secretpass'},
+            {'identifier': 'customer@example.com', 'password': 'secretpass'},
             format='json',
         )
         self.assertEqual(login.status_code, status.HTTP_200_OK)
         self.assertFalse(login.data['is_new_user'])
         self.assertEqual(login.data['user']['id'], register.data['user']['id'])
 
+        phone_login = self.client.post(
+            '/api/v1/auth/login/',
+            {'identifier': '9876543210', 'password': 'secretpass'},
+            format='json',
+        )
+        self.assertEqual(phone_login.status_code, status.HTTP_200_OK)
+        self.assertEqual(phone_login.data['user']['id'], register.data['user']['id'])
+
         bad = self.client.post(
             '/api/v1/auth/login/',
-            {'email': 'customer@example.com', 'password': 'wrongpass'},
+            {'identifier': 'customer@example.com', 'password': 'wrongpass'},
             format='json',
         )
         self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_phone_register_without_email(self):
+        register = self.client.post(
+            '/api/v1/auth/register/',
+            {
+                'phone_number': '9123456780',
+                'password': 'secretpass',
+                'first_name': 'Phone',
+                'last_name': 'Only',
+            },
+            format='json',
+        )
+        self.assertEqual(register.status_code, status.HTTP_201_CREATED, register.data)
+        self.assertEqual(register.data['user']['phone_number'], '+919123456780')
+        self.assertEqual(register.data['user']['email'], None)
+
+        login = self.client.post(
+            '/api/v1/auth/login/',
+            {'identifier': '9123456780', 'password': 'secretpass'},
+            format='json',
+        )
+        self.assertEqual(login.status_code, status.HTTP_200_OK)
+        self.assertEqual(login.data['user']['id'], register.data['user']['id'])
+
+    def test_register_without_phone_is_rejected(self):
+        register = self.client.post(
+            '/api/v1/auth/register/',
+            {'email': 'nophoneuser@example.com', 'password': 'secretpass'},
+            format='json',
+        )
+        self.assertEqual(register.status_code, status.HTTP_400_BAD_REQUEST)
 
     @patch('apps.accounts.serializers.verify_id_token')
     def test_google_account_cannot_login_with_password(self, mock_verify):
@@ -185,7 +226,84 @@ class AuthAPITests(APITestCase):
         )
         login = self.client.post(
             '/api/v1/auth/login/',
-            {'email': 'google.only@gmail.com', 'password': 'anything123'},
+            {'identifier': 'google.only@gmail.com', 'password': 'anything123'},
             format='json',
         )
         self.assertEqual(login.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class DeleteAccountTests(APITestCase):
+    def setUp(self):
+        from datetime import date, time
+
+        from apps.accounts.models import User, UserDeviceToken
+        from apps.bookings.models import Booking
+        from apps.locations.models import Address, City
+
+        self.user = User.objects.create_user(
+            phone_number='+919811112222',
+            email='asha@example.com',
+            google_id='google-123',
+            first_name='Asha',
+        )
+        UserDeviceToken.objects.create(user=self.user, token='push-token', platform='android')
+        city, _ = City.objects.get_or_create(slug='patna', defaults={'name': 'Patna', 'state': 'Bihar'})
+        self.booked_address = Address.objects.create(
+            user=self.user, city=city, label='Home', contact_name='Asha', contact_phone='+919811112222',
+            line1='Flat 2, Boring Road', pincode='800001', latitude=25.6, longitude=85.1,
+        )
+        self.spare_address = Address.objects.create(
+            user=self.user, city=city, label='Office', contact_name='Asha', contact_phone='+919811112222',
+            line1='Office 9', pincode='800002',
+        )
+        self.booking = Booking.objects.create(
+            customer=self.user, address=self.booked_address, city=city,
+            scheduled_date=date(2026, 1, 1), scheduled_time=time(10, 0),
+            subtotal_amount=500, total_amount=500,
+            status=Booking.Status.COMPLETED, notes='Gate code 4455',
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_delete_erases_personal_data_and_keeps_booking(self):
+        from apps.accounts.models import UserDeviceToken
+        from apps.locations.models import Address
+
+        response = self.client.delete('/api/v1/auth/me/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+        self.assertIsNone(self.user.phone_number)
+        self.assertIsNone(self.user.email)
+        self.assertIsNone(self.user.google_id)
+        self.assertEqual(self.user.first_name, '')
+        self.assertFalse(UserDeviceToken.objects.filter(user=self.user).exists())
+        self.assertFalse(Address.objects.filter(pk=self.spare_address.pk).exists())
+
+        self.booked_address.refresh_from_db()
+        self.assertEqual(self.booked_address.contact_phone, '')
+        self.assertIsNone(self.booked_address.latitude)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.notes, '')
+
+    def test_upcoming_booking_blocks_deletion(self):
+        from apps.bookings.models import Booking
+
+        self.booking.status = Booking.Status.CONFIRMED
+        self.booking.save()
+        response = self.client.delete('/api/v1/auth/me/')
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_active)
+
+    def test_tokens_stop_working_after_deletion(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        refresh = RefreshToken.for_user(self.user)
+        self.client.force_authenticate(user=None)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh.access_token}')
+        self.assertEqual(self.client.delete('/api/v1/auth/me/').status_code, status.HTTP_204_NO_CONTENT)
+
+        self.assertEqual(self.client.get('/api/v1/auth/me/').status_code, status.HTTP_401_UNAUTHORIZED)
+        refreshed = self.client.post('/api/v1/auth/token/refresh/', {'refresh': str(refresh)}, format='json')
+        self.assertEqual(refreshed.status_code, status.HTTP_401_UNAUTHORIZED)

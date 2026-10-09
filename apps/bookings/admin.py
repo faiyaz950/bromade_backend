@@ -76,6 +76,8 @@ class BookingAdmin(admin.ModelAdmin):
         'updated_at',
         'subtotal_amount',
         'discount_amount',
+        'tax_rate',
+        'tax_amount',
         'total_amount',
         'coupon',
         'coupon_code',
@@ -92,7 +94,7 @@ class BookingAdmin(admin.ModelAdmin):
             {'fields': ('start_photo_preview', 'start_photo', 'completion_photo_preview', 'completion_photo')},
         ),
         ('Schedule & location', {'fields': ('scheduled_date', 'scheduled_time', 'city', 'address')}),
-        ('Pricing', {'fields': ('subtotal_amount', 'coupon', 'coupon_code', 'discount_amount', 'total_amount')}),
+        ('Pricing', {'fields': ('subtotal_amount', 'coupon', 'coupon_code', 'discount_amount', 'tax_rate', 'tax_amount', 'total_amount')}),
         ('Timestamps', {'fields': ('created_at', 'updated_at')}),
     )
 

@@ -1,6 +1,6 @@
-# Bayti Backend
+# Demess Backend
 
-Booking MVP backend for Bayti Home Services.
+Booking MVP backend for Demess Home Services.
 
 ## Setup
 

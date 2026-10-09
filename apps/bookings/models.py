@@ -1,4 +1,5 @@
 import secrets
+from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
@@ -55,6 +56,8 @@ class Booking(UUIDModel):
     )
     subtotal_amount = models.DecimalField(max_digits=10, decimal_places=2)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    tax_rate = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal('0.00'))
+    tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     coupon = models.ForeignKey(
         'coupons.Coupon',
@@ -95,6 +98,13 @@ class Booking(UUIDModel):
 
     def __str__(self):
         return f'Booking {self.pk} - {self.customer.phone_number}'
+
+    @property
+    def amount_before_tax(self):
+        """Pre-tax amount owed (subtotal minus discount). Commission is computed
+        on this, not on total_amount, so the 30% wallet deposit partners pay to
+        accept a job is unaffected by GST being added on top for the customer."""
+        return self.subtotal_amount - self.discount_amount
 
     def start_visit_tracking(self, note=''):
         previous = self.status

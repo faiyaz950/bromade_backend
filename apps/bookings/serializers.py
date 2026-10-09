@@ -12,6 +12,7 @@ from apps.locations.models import Address
 
 from .models import Booking, BookingAssignment, BookingItem
 from .services import MAX_RESCHEDULES, can_cancel, can_reschedule, cancel_deadline
+from .tax_service import TaxService
 
 TIMELINE_KEYS = ('on_the_way', 'arrived', 'in_progress', 'cash_collected', 'completed')
 
@@ -151,6 +152,8 @@ class BookingSerializer(serializers.ModelSerializer):
             'partner_rating_count',
             'subtotal_amount',
             'discount_amount',
+            'tax_rate',
+            'tax_amount',
             'total_amount',
             'coupon_code',
             'payment_method',
@@ -238,7 +241,7 @@ class BookingSerializer(serializers.ModelSerializer):
         assignment = self._accepted_assignment(obj)
         if assignment is None:
             return ''
-        return assignment.partner.full_name or 'Bayti professional'
+        return assignment.partner.full_name or 'Demess professional'
 
     def get_partner_phone(self, obj):
         assignment = self._accepted_assignment(obj)
@@ -293,6 +296,7 @@ class BookingPriceSummarySerializer(serializers.Serializer):
         city_price = CityPackagePrice.objects.filter(package=package, city_id=city_id, is_active=True).first() if city_id else None
         base_price = city_price.price if city_price else package.base_price
         discounted_price = city_price.discounted_price if city_price else package.discounted_price
+        tax_rate, tax_amount = TaxService.calculate_tax(discounted_price)
         return {
             'package_id': str(package.id),
             'package_name': package.name,
@@ -300,6 +304,9 @@ class BookingPriceSummarySerializer(serializers.Serializer):
             'discounted_price': discounted_price,
             'currency': 'INR',
             'savings': Decimal(base_price) - Decimal(discounted_price),
+            'tax_rate': tax_rate,
+            'tax_amount': tax_amount,
+            'total_amount': Decimal(discounted_price) + tax_amount,
         }
 
 

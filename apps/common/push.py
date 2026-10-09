@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from dataclasses import dataclass
 from functools import lru_cache
 
 import requests
@@ -53,36 +54,70 @@ def _access_token(credentials) -> str:
     return credentials.token
 
 
+@dataclass
+class DeliveryReport:
+    delivered: int = 0
+    failed: int = 0
+    expired: int = 0
+
+
 def _send_now(tokens: list[str], title: str, body: str, data: dict[str, str]) -> list[str]:
+    return _deliver(tokens, title, body, data)[1]
+
+
+def deliver_now(tokens, title: str, body: str, data: dict | None = None) -> DeliveryReport:
+    """Send inline and report the outcome. Expired tokens are removed."""
+    tokens = [token for token in dict.fromkeys(tokens) if token and not token.startswith('local-')]
+    payload = {key: str(value) for key, value in (data or {}).items()}
+    report, dead = _deliver(tokens, title, body, payload)
+    _forget(dead)
+    return report
+
+
+def _deliver(tokens: list[str], title: str, body: str, data: dict[str, str]) -> tuple[DeliveryReport, list[str]]:
+    report = DeliveryReport()
     credentials = _credentials()
-    if credentials is None:
-        return []
+    if credentials is None or not tokens:
+        return report, []
     url = f'https://fcm.googleapis.com/v1/projects/{credentials.project_id}/messages:send'
-    headers = {'Authorization': f'Bearer {_access_token(credentials)}'}
     dead = []
-    for token in tokens:
-        message = {
-            'message': {
-                'token': token,
-                'notification': {'title': title, 'body': body},
-                'data': data,
-                'android': {'priority': 'high', 'notification': {'sound': 'default'}},
-                'apns': {'payload': {'aps': {'sound': 'default'}}},
+    with requests.Session() as session:
+        for token in tokens:
+            message = {
+                'message': {
+                    'token': token,
+                    'notification': {'title': title, 'body': body},
+                    'data': data,
+                    # channel_id must match the channel the apps create.
+                    'android': {
+                        'priority': 'high',
+                        'notification': {'sound': 'default', 'channel_id': 'booking_updates'},
+                    },
+                    'apns': {'payload': {'aps': {'sound': 'default'}}},
+                }
             }
-        }
-        try:
-            reply = requests.post(url, json=message, headers=headers, timeout=10)
-        except requests.RequestException:
-            logger.exception('FCM request failed.')
-            continue
-        if reply.status_code == 200:
-            continue
-        status = (reply.json().get('error', {}) or {}).get('status', '') if reply.content else ''
-        if reply.status_code in (400, 404) and status in _DEAD_TOKEN_ERRORS:
-            dead.append(token)
-        else:
-            logger.warning('FCM rejected a push (%s): %s', reply.status_code, reply.text[:300])
-    return dead
+            # Refreshes itself once the hour-long access token runs out.
+            headers = {'Authorization': f'Bearer {_access_token(credentials)}'}
+            try:
+                reply = session.post(url, json=message, headers=headers, timeout=10)
+            except requests.RequestException:
+                logger.exception('FCM request failed.')
+                report.failed += 1
+                continue
+            if reply.status_code == 200:
+                report.delivered += 1
+                continue
+            try:
+                status = (reply.json().get('error', {}) or {}).get('status', '')
+            except ValueError:
+                status = ''
+            if reply.status_code in (400, 404) and status in _DEAD_TOKEN_ERRORS:
+                dead.append(token)
+                report.expired += 1
+            else:
+                report.failed += 1
+                logger.warning('FCM rejected a push (%s): %s', reply.status_code, reply.text[:300])
+    return report, dead
 
 
 def _forget(tokens: list[str]) -> None:

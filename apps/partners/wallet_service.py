@@ -36,7 +36,7 @@ class InsufficientWalletError(ValueError):
             f'Low wallet balance. This {inr(self.job_amount)} job needs '
             f'{inr(self.required_amount)} (30%) in your wallet to accept. '
             f'Current wallet: {inr(self.wallet_balance)}. '
-            f'Pay Bayti and ask admin to add the amount.'
+            f'Pay Demess and ask admin to add the amount.'
         )
 
 
@@ -111,7 +111,7 @@ class WalletService:
 
     @staticmethod
     def debit_commission(*, partner: PartnerProfile, booking) -> WalletTransaction:
-        required = commission_amount(booking.total_amount)
+        required = commission_amount(booking.amount_before_tax)
         with transaction.atomic():
             locked = PartnerProfile.objects.select_for_update().get(pk=partner.pk)
             balance = money(locked.wallet_balance)
@@ -119,7 +119,7 @@ class WalletService:
                 raise InsufficientWalletError(
                     wallet_balance=balance,
                     required_amount=required,
-                    job_amount=booking.total_amount,
+                    job_amount=booking.amount_before_tax,
                 )
             locked.wallet_balance = balance - required
             locked.save(update_fields=['wallet_balance', 'updated_at'])
@@ -128,7 +128,7 @@ class WalletService:
                 entry_type=WalletTransaction.EntryType.DEBIT,
                 amount=required,
                 balance_after=locked.wallet_balance,
-                note=f'30% commission for {inr(booking.total_amount)} job',
+                note=f'30% commission for {inr(booking.amount_before_tax)} job',
                 booking=booking,
             )
             partner.wallet_balance = locked.wallet_balance

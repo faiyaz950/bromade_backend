@@ -379,7 +379,7 @@ class PartnerJobSerializer(serializers.ModelSerializer):
     def get_commission_amount(self, obj):
         from apps.partners.wallet_service import commission_amount
 
-        return commission_amount(obj.total_amount)
+        return commission_amount(obj.amount_before_tax)
 
     def _wallet_covers_commission(self, obj):
         partner = self.context.get('partner')
@@ -387,7 +387,7 @@ class PartnerJobSerializer(serializers.ModelSerializer):
             return False
         from apps.partners.wallet_service import commission_amount, money
 
-        return money(partner.wallet_balance) >= commission_amount(obj.total_amount)
+        return money(partner.wallet_balance) >= commission_amount(obj.amount_before_tax)
 
     def get_can_accept(self, obj):
         assignment = self._assignment(obj)

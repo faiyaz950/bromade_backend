@@ -9,6 +9,7 @@ from apps.coupons.models import Coupon, CouponRedemption
 from apps.coupons.services import CouponService, CouponValidationError
 
 from .models import Booking, BookingAssignment, BookingItem, BookingStatusLog
+from .tax_service import TaxService
 
 MAX_RESCHEDULES = 2
 MIN_LEAD_TIME = timedelta(hours=1)
@@ -60,6 +61,10 @@ class BookingService:
         else:
             total = subtotal
 
+        taxable_amount = total  # post-discount, pre-tax
+        tax_rate, tax_amount = TaxService.calculate_tax(taxable_amount)
+        total = taxable_amount + tax_amount
+
         booking = Booking.objects.create(
             customer=user,
             address=address,
@@ -69,6 +74,8 @@ class BookingService:
             status=Booking.Status.PENDING_PAYMENT,
             subtotal_amount=subtotal,
             discount_amount=discount,
+            tax_rate=tax_rate,
+            tax_amount=tax_amount,
             total_amount=total,
             coupon=applied_coupon,
             coupon_code=applied_coupon.code if applied_coupon else '',
@@ -124,7 +131,7 @@ class BookingService:
         if accepted is not None:
             WalletService.credit(
                 partner=accepted.partner,
-                amount=commission_amount(booking.total_amount),
+                amount=commission_amount(booking.amount_before_tax),
                 note='Commission refund: customer cancelled the job',
                 booking=booking,
             )

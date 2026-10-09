@@ -1,0 +1,34 @@
+{% extends "legal/base.html" %}
+{% block content %}
+<p>You can delete your {{ brand }} account and personal data at any time.</p>
+
+<div class="card">
+  <h2 style="margin-top:0">From the app</h2>
+  <ol>
+    <li>Open the {{ brand }} app and sign in.</li>
+    <li>Go to <strong>Profile</strong>.</li>
+    <li>Tap <strong>Delete account</strong> and confirm.</li>
+  </ol>
+  <p>Your account is closed immediately and you are signed out.</p>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Without the app</h2>
+  <p>Email <a href="mailto:{{ support_email }}?subject=Delete%20my%20Demess%20account">{{ support_email }}</a> from the email address on your account, or include the mobile number you signed up with. We will confirm it is your account and delete it within 30 days.</p>
+</div>
+
+<h2>What gets deleted</h2>
+<ul>
+  <li>Your name, mobile number, email address and Google sign-in link</li>
+  <li>Saved addresses and map pins</li>
+  <li>Support chats</li>
+  <li>Before/after visit photos</li>
+  <li>Push-notification tokens and referral code</li>
+</ul>
+
+<h2>What we keep</h2>
+<p>A record of past bookings and payments (service, date, amount) with your personal details removed, because tax and accounting laws require it. It can no longer be linked to you.</p>
+
+<h2>Before you delete</h2>
+<p>If you have an upcoming booking, cancel it or wait until the visit is done first. Unused coupons and referral rewards are lost when the account is deleted.</p>
+{% endblock %}

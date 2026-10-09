@@ -10,7 +10,7 @@ def _notify_customer(ticket: SupportTicket, body: str) -> None:
 
     send_push(
         UserDeviceToken.objects.filter(user_id=ticket.user_id).values_list('token', flat=True),
-        title='Bayti Support replied',
+        title='Demess Support replied',
         body=body[:140],
         data={'type': 'support', 'ticket_id': str(ticket.id)},
     )

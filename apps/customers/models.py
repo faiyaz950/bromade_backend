@@ -19,7 +19,7 @@ class CustomerProfile(UUIDModel):
 
 
 class SupportTicket(UUIDModel):
-    """A support conversation between a customer and the Bayti team."""
+    """A support conversation between a customer and the Demess team."""
 
     class Status(models.TextChoices):
         OPEN = 'open', 'Open'

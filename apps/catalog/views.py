@@ -1,6 +1,10 @@
-from django.db.models import Prefetch
+from datetime import timedelta
+
+from django.db.models import Count, Prefetch
+from django.utils import timezone
 from rest_framework import generics, permissions, response
 
+from apps.bookings.models import Booking, BookingItem, BookingRating
 from apps.bookings.reviews import rating_summary, ratings_for_service
 
 from .models import Category, CityPackagePrice, HomeHeroSlide, ServicePackage
@@ -17,6 +21,34 @@ def _city_price_prefetch(city_id):
     else:
         queryset = queryset.none()
     return Prefetch('city_prices', queryset=queryset, to_attr='matched_city_prices')
+
+
+POPULAR_WINDOW_DAYS = 30
+
+
+def service_stats() -> dict:
+    """Real ratings and recent booking counts per service id."""
+    since = timezone.now() - timedelta(days=POPULAR_WINDOW_DAYS)
+    booked = (
+        BookingItem.objects.filter(
+            booking__created_at__gte=since,
+            booking__status__in=[Booking.Status.CONFIRMED, Booking.Status.COMPLETED],
+        )
+        .values('package__service_id')
+        .annotate(n=Count('booking', distinct=True))
+        .values_list('package__service_id', 'n')
+    )
+    stats = {service_id: {'recent_bookings': n} for service_id, n in booked}
+    # A booking with two packages of one service must still count as one review.
+    stars_by_service: dict = {}
+    rows = BookingRating.objects.values_list('booking__items__package__service_id', 'id', 'stars').distinct()
+    for service_id, rating_id, stars in rows:
+        stars_by_service.setdefault(service_id, {})[rating_id] = stars
+    for service_id, ratings in stars_by_service.items():
+        entry = stats.setdefault(service_id, {})
+        entry['rating_count'] = len(ratings)
+        entry['rating_average'] = round(sum(ratings.values()) / len(ratings), 1)
+    return stats
 
 
 class CategoryListView(generics.ListAPIView):
@@ -36,6 +68,7 @@ class CategoryListView(generics.ListAPIView):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context['city_id'] = self.request.query_params.get('city_id')
+        context['service_stats'] = service_stats()
         return context
 
 

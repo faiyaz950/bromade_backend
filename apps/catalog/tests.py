@@ -86,6 +86,46 @@ class CatalogAPITests(APITestCase):
         self.assertEqual(package_response.status_code, status.HTTP_200_OK)
         self.assertEqual(package_response.data['name'], 'Classic Bathroom Clean')
 
+    def test_services_carry_real_ratings_and_recent_bookings(self):
+        from apps.bookings.models import Booking, BookingItem, BookingRating
+        from apps.locations.models import Address, City
+
+        city, _ = City.objects.get_or_create(slug='patna', defaults={'name': 'Patna', 'state': 'Bihar'})
+        address = Address.objects.create(
+            user=self.user, city=city, label='Home', contact_name='A',
+            contact_phone='+919111111111', line1='Road', pincode='800001',
+        )
+
+        def book(status_, stars=None, items=1):
+            booking = Booking.objects.create(
+                customer=self.user, address=address, city=city, status=status_,
+                scheduled_date='2026-10-10', scheduled_time='10:00',
+                subtotal_amount=999, total_amount=999,
+            )
+            for _ in range(items):
+                BookingItem.objects.create(
+                    booking=booking, package=self.package, service_name='Bathroom Cleaning',
+                    package_name='Classic', unit_price=999, line_total=999,
+                )
+            if stars:
+                BookingRating.objects.create(booking=booking, stars=stars)
+
+        book(Booking.Status.COMPLETED, stars=5, items=2)
+        book(Booking.Status.COMPLETED, stars=4)
+        book(Booking.Status.CONFIRMED)
+        book(Booking.Status.CANCELLED)
+
+        service = self.client.get('/api/v1/catalog/categories/').data[0]['services'][0]
+        self.assertEqual(service['rating_count'], 2)
+        self.assertEqual(service['rating_average'], 4.5)
+        self.assertEqual(service['recent_bookings'], 3)
+
+    def test_unrated_service_has_no_average(self):
+        service = self.client.get('/api/v1/catalog/categories/').data[0]['services'][0]
+        self.assertIsNone(service['rating_average'])
+        self.assertEqual(service['rating_count'], 0)
+        self.assertEqual(service['recent_bookings'], 0)
+
     def test_each_package_has_its_own_includes(self):
         premium = ServicePackage.objects.create(
             service=self.service,

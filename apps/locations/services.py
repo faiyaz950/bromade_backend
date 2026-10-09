@@ -132,7 +132,7 @@ def _match_by_coordinates(cities, latitude, longitude):
     for city in cities:
         if city.latitude is None or city.longitude is None:
             continue
-        distance = _haversine_km(lat, lng, float(city.latitude), float(city.longitude))
+        distance = haversine_km(lat, lng, float(city.latitude), float(city.longitude))
         radius = city.service_radius_km or 0
         if distance > radius:
             continue
@@ -142,7 +142,7 @@ def _match_by_coordinates(cities, latitude, longitude):
     return nearest
 
 
-def _haversine_km(lat1, lon1, lat2, lon2):
+def haversine_km(lat1, lon1, lat2, lon2):
     radius = 6371
     d_lat = math.radians(lat2 - lat1)
     d_lon = math.radians(lon2 - lon1)

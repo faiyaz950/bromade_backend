@@ -1,6 +1,9 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from .models import Address, City
+from .services import haversine_km
 
 
 class CitySerializer(serializers.ModelSerializer):
@@ -24,6 +27,8 @@ class CoverageCheckSerializer(serializers.Serializer):
 class AddressSerializer(serializers.ModelSerializer):
     city = CitySerializer(read_only=True)
     city_id = serializers.PrimaryKeyRelatedField(source='city', queryset=City.objects.filter(is_active=True), write_only=True)
+    latitude = serializers.FloatField(required=False, allow_null=True, min_value=-90, max_value=90)
+    longitude = serializers.FloatField(required=False, allow_null=True, min_value=-180, max_value=180)
 
     class Meta:
         model = Address
@@ -42,6 +47,25 @@ class AddressSerializer(serializers.ModelSerializer):
             'city',
             'city_id',
         )
+
+    def validate(self, attrs):
+        latitude = attrs.get('latitude', getattr(self.instance, 'latitude', None))
+        longitude = attrs.get('longitude', getattr(self.instance, 'longitude', None))
+        if (latitude is None) != (longitude is None):
+            raise serializers.ValidationError({'latitude': 'Send both latitude and longitude.'})
+        # The model keeps 6 decimal places (~10 cm); GPS gives more.
+        for key in ('latitude', 'longitude'):
+            if attrs.get(key) is not None:
+                attrs[key] = Decimal(str(round(attrs[key], 6)))
+
+        city = attrs.get('city') or getattr(self.instance, 'city', None)
+        if latitude is not None and city is not None and city.latitude is not None and city.longitude is not None:
+            distance = haversine_km(float(latitude), float(longitude), float(city.latitude), float(city.longitude))
+            if distance > (city.service_radius_km or 0):
+                raise serializers.ValidationError(
+                    {'latitude': f'This pin is outside our {city.name} service area. Move the pin or pick another city.'}
+                )
+        return attrs
 
     def create(self, validated_data):
         user = self.context['request'].user

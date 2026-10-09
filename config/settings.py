@@ -167,12 +167,13 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
+    'ROTATE_REFRESH_TOKENS': True,
 }
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'Bayti Home Services API',
+    'TITLE': 'Demess Home Services API',
     'DESCRIPTION': 'Booking MVP APIs for the customer application.',
     'VERSION': '1.0.0',
 }
@@ -189,4 +190,6 @@ FIREBASE_SERVICE_ACCOUNT_JSON = config('FIREBASE_SERVICE_ACCOUNT_JSON', default=
 SUPPORT_PHONE = config('SUPPORT_PHONE', default='+918340715516')
 SUPPORT_WHATSAPP = config('SUPPORT_WHATSAPP', default='+918340715516')
 SUPPORT_EMAIL = config('SUPPORT_EMAIL', default='support@brolyticstechnologies.com')
+COMPANY_NAME = config('COMPANY_NAME', default='Brolytics Technologies')
+LEGAL_EFFECTIVE_DATE = config('LEGAL_EFFECTIVE_DATE', default='6 October 2026')
 SUPPORT_HOURS = config('SUPPORT_HOURS', default='9 AM – 9 PM, all days')

@@ -10,6 +10,7 @@ from .serializers import (
     OTPVerifySerializer,
     UserSerializer,
 )
+from .services.deletion import AccountDeletionBlocked, delete_customer_account
 
 
 class OTPRequestView(generics.GenericAPIView):
@@ -101,11 +102,18 @@ class EmailLoginView(generics.GenericAPIView):
         return _auth_response(payload)
 
 
-class MeView(generics.RetrieveUpdateAPIView):
+class MeView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = UserSerializer
 
     def get_object(self):
         return self.request.user
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            delete_customer_account(request.user)
+        except AccountDeletionBlocked as error:
+            return response.Response({'detail': str(error)}, status=status.HTTP_409_CONFLICT)
+        return response.Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class DeviceTokenView(generics.GenericAPIView):

@@ -1,0 +1,58 @@
+{% extends "legal/base.html" %}
+{% block content %}
+<p>This policy explains what personal data the {{ brand }} customer app and website collect, why, who we share it with, and the choices you have. {{ brand }} is operated by {{ company }} ("we", "us").</p>
+
+<h2>1. Data we collect</h2>
+<ul>
+  <li><strong>Account details</strong> – your name, mobile number, email address, and, if you sign in with Google, your Google account identifier.</li>
+  <li><strong>Addresses and map location</strong> – the addresses you save, including the map pin (latitude and longitude) you place so a professional can reach you.</li>
+  <li><strong>Device location</strong> – with your permission, your current location to check whether we serve your area and to help you pin an address. We do not track your location in the background.</li>
+  <li><strong>Bookings</strong> – services booked, date and time, price, coupons used, payment method, visit status, ratings and reviews you give.</li>
+  <li><strong>Visit photos</strong> – before and after photos the professional may take of the work done at your home.</li>
+  <li><strong>Support chats</strong> – messages you send to our support team in the app.</li>
+  <li><strong>Device data</strong> – a push-notification token for your phone, and basic technical logs (such as IP address and app requests) that our servers record for security and troubleshooting.</li>
+</ul>
+<p>We do not collect card or bank details. When online payment is available, it is processed by our payment provider, which handles that data under its own policy.</p>
+
+<h2>2. How we use your data</h2>
+<ul>
+  <li>To create your account and sign you in.</li>
+  <li>To take bookings, match you with a professional, and let them reach and contact you for the visit.</li>
+  <li>To show you the professional's live location while they are on the way.</li>
+  <li>To send booking updates and support replies as push notifications.</li>
+  <li>To apply coupons and referral rewards, prepare invoices, and keep accounting records.</li>
+  <li>To answer support requests, resolve complaints, and keep the service safe and free of fraud.</li>
+</ul>
+
+<h2>3. Who we share it with</h2>
+<ul>
+  <li><strong>The professional assigned to your booking</strong> – your name, phone number, address and map pin, and the booking details, only for that visit.</li>
+  <li><strong>Service providers</strong> who run parts of the app for us: Google Firebase (sign-in and push notifications), our cloud hosting provider, and map tile providers such as OpenStreetMap (which receive the map area being viewed, not your account).</li>
+  <li><strong>Authorities</strong>, when the law requires it.</li>
+</ul>
+<p>We do not sell your personal data.</p>
+
+<h2>4. How long we keep it</h2>
+<p>We keep your data while your account is open. When you delete your account, we erase your name, phone number, email, Google identifier, saved addresses and map pins, support chats, visit photos and push tokens. We keep a record of past bookings and payments without your personal details, because tax and accounting laws require it.</p>
+
+<h2>5. Your choices and rights</h2>
+<ul>
+  <li>View and edit your name and phone number from <em>Profile → Edit profile</em>.</li>
+  <li>Add or delete saved addresses at any time.</li>
+  <li>Turn off location or notifications in your phone's settings.</li>
+  <li>Delete your account from <em>Profile → Delete account</em> in the app, or as described on the <a href="/delete-account/">delete account page</a>.</li>
+  <li>Ask us for a copy of your data or to correct it by writing to <a href="mailto:{{ support_email }}">{{ support_email }}</a>.</li>
+</ul>
+
+<h2>6. Security</h2>
+<p>Data travels over encrypted connections (HTTPS), and access to it is limited to staff and professionals who need it. No system is perfectly secure, but we work to protect your data and will tell you if a breach affects you, as the law requires.</p>
+
+<h2>7. Children</h2>
+<p>{{ brand }} is meant for adults who book services for their home. We do not knowingly collect data from children under 18.</p>
+
+<h2>8. Changes</h2>
+<p>If we change this policy, we will update the date above and, for important changes, tell you in the app.</p>
+
+<h2>9. Contact</h2>
+<p>Questions or requests about your data: <a href="mailto:{{ support_email }}">{{ support_email }}</a>.</p>
+{% endblock %}

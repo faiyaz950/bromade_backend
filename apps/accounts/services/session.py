@@ -5,6 +5,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.customers.models import CustomerProfile
 
 from apps.accounts.models import User
+from apps.accounts.services.phone import normalize_phone_number
 
 
 def _split_name(first_name='', last_name='', display_name=''):
@@ -91,16 +92,20 @@ def issue_firebase_auth_payload(decoded, first_name='', last_name=''):
     )
 
 
-def issue_email_register_payload(email, password, first_name='', last_name=''):
-    normalized = (email or '').strip().lower()
-    if not normalized:
-        raise ValueError('Email is required.')
-    if User.objects.filter(email__iexact=normalized).exists():
+def issue_email_register_payload(phone_number, password, email='', first_name='', last_name=''):
+    phone = normalize_phone_number(phone_number)
+    if not phone:
+        raise ValueError('Mobile number is required.')
+    if User.objects.filter(phone_number=phone).exists():
+        raise ValueError('An account with this mobile number already exists.')
+
+    normalized_email = (email or '').strip().lower() or None
+    if normalized_email and User.objects.filter(email__iexact=normalized_email).exists():
         raise ValueError('An account with this email already exists.')
 
     user = User(
-        phone_number=None,
-        email=normalized,
+        phone_number=phone,
+        email=normalized_email,
         first_name=(first_name or '').strip(),
         last_name=(last_name or '').strip(),
     )
@@ -108,24 +113,28 @@ def issue_email_register_payload(email, password, first_name='', last_name=''):
     try:
         user.save()
     except IntegrityError as exc:
-        raise ValueError('An account with this email already exists.') from exc
+        raise ValueError('An account with this mobile number or email already exists.') from exc
 
     _sync_profile(user)
     return _token_payload(user, True)
 
 
-def issue_email_login_payload(email, password):
-    normalized = (email or '').strip().lower()
-    if not normalized:
-        raise ValueError('Email is required.')
+def issue_email_login_payload(identifier, password):
+    raw = (identifier or '').strip()
+    if not raw:
+        raise ValueError('Email or mobile number is required.')
 
-    user = User.objects.filter(email__iexact=normalized).first()
+    if '@' in raw:
+        user = User.objects.filter(email__iexact=raw.lower()).first()
+    else:
+        user = User.objects.filter(phone_number=normalize_phone_number(raw)).first()
+
     if user is None:
-        raise ValueError('Invalid email or password.')
+        raise ValueError('Invalid email/number or password.')
     if not user.has_usable_password():
         raise ValueError('This account uses Google Sign-In. Continue with Google.')
     if not user.check_password(password):
-        raise ValueError('Invalid email or password.')
+        raise ValueError('Invalid email/number or password.')
     if not user.is_active:
         raise ValueError('This account is inactive.')
 

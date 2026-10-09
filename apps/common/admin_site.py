@@ -5,8 +5,8 @@ from django.utils import timezone
 
 
 class BrolyticsAdminSite(AdminSite):
-    site_header = 'Bayti Operations'
-    site_title = 'Bayti Admin'
+    site_header = 'Demess Operations'
+    site_title = 'Demess Admin'
     index_title = 'Command Center'
     site_url = '/'
     enable_nav_sidebar = True
@@ -15,7 +15,7 @@ class BrolyticsAdminSite(AdminSite):
 
     def each_context(self, request):
         context = super().each_context(request)
-        context['brolytics_brand'] = 'Bayti'
+        context['brolytics_brand'] = 'Demess'
         context['brolytics_tagline'] = 'Home Services'
         return context
 
